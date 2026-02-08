@@ -7,6 +7,17 @@ import { Badge } from '@/components/ui/badge'
 import { PlayCircle, RefreshCw, Trash2, Database, Mail, FileText } from 'lucide-react'
 import { toast } from 'sonner'
 
+type ToolAction = {
+  id: string
+  name: string
+  description: string
+  endpoint: string
+  icon: any
+  variant: 'default' | 'outline'
+  method: 'GET' | 'POST'
+  confirm?: string
+}
+
 export default function ToolsPage() {
   const [loading, setLoading] = useState<string | null>(null)
 
@@ -61,8 +72,8 @@ export default function ToolsPage() {
           description: 'Parse all unparsed emails using active parsing rules and create purchases',
           endpoint: '/api/parser/parse-emails',
           icon: PlayCircle,
-          variant: 'default' as const,
-          method: 'POST' as const,
+          variant: 'default',
+          method: 'POST',
         },
         {
           id: 'reset-emails',
@@ -70,11 +81,11 @@ export default function ToolsPage() {
           description: 'Mark all emails as unparsed (useful for re-parsing after rule changes)',
           endpoint: '/api/debug/reset-emails',
           icon: RefreshCw,
-          variant: 'outline' as const,
-          method: 'POST' as const,
+          variant: 'outline',
+          method: 'POST',
           confirm: 'This will mark all emails as unparsed. Continue?',
         },
-      ],
+      ] as ToolAction[],
     },
     {
       category: 'Gmail Sync',
@@ -87,10 +98,10 @@ export default function ToolsPage() {
           description: 'Fetch new emails from Gmail and auto-parse them',
           endpoint: '/api/gmail/sync',
           icon: RefreshCw,
-          variant: 'default' as const,
-          method: 'POST' as const,
+          variant: 'default',
+          method: 'POST',
         },
-      ],
+      ] as ToolAction[],
     },
     {
       category: 'Diagnostics',
@@ -103,10 +114,10 @@ export default function ToolsPage() {
           description: 'Check emails, rules, cards, and purchases count',
           endpoint: '/api/debug/check-parsing',
           icon: Database,
-          variant: 'outline' as const,
-          method: 'GET' as const,
+          variant: 'outline',
+          method: 'GET',
         },
-      ],
+      ] as ToolAction[],
     },
   ]
 
