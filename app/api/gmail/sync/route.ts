@@ -104,28 +104,24 @@ export async function POST(request: NextRequest) {
           continue
         }
 
-        // Try to parse the email
-        const parser = new EmailParser(parsingRules)
-        const parseResult = parser.parseEmail({
-          sender: messageDetails.from,
-          subject: messageDetails.subject,
-          body: messageDetails.body,
-        })
+        // Try to parse the email using the rawEmail object
+        const parser = new EmailParser(parsingRules || [])
+        const parseResult = parser.parse(rawEmail)
 
-        if (parseResult) {
+        if (parseResult.success && parseResult.data) {
           // Create purchase from parsed data
           const { error: purchaseError } = await supabase
             .from('purchases')
             .insert({
               admin_user_id: user.id,
-              amount: parseResult.amount,
-              merchant: parseResult.merchant,
-              purchase_date: parseResult.date || new Date().toISOString().split('T')[0],
+              amount: parseResult.data.amount,
+              merchant: parseResult.data.merchant || null,
+              purchase_date: parseResult.data.purchase_date || new Date().toISOString().split('T')[0],
               raw_email_id: rawEmail.id,
               source: 'email',
               description: messageDetails.subject,
-              card_id: parseResult.card_id || null,
-              employee_id: parseResult.employee_id || null,
+              card_id: null,
+              employee_id: null,
             })
 
           if (purchaseError) {
@@ -136,7 +132,7 @@ export async function POST(request: NextRequest) {
               .update({
                 parsed: true,
                 parse_error: purchaseError.message,
-                parsing_rule_id: parseResult.rule_id,
+                parsing_rule_id: parseResult.ruleId,
               })
               .eq('id', rawEmail.id)
             emailsFailed++
@@ -146,7 +142,7 @@ export async function POST(request: NextRequest) {
               .from('raw_emails')
               .update({
                 parsed: true,
-                parsing_rule_id: parseResult.rule_id,
+                parsing_rule_id: parseResult.ruleId,
               })
               .eq('id', rawEmail.id)
             emailsSynced++
@@ -157,7 +153,7 @@ export async function POST(request: NextRequest) {
             .from('raw_emails')
             .update({
               parsed: false,
-              parse_error: 'No matching parsing rule found',
+              parse_error: parseResult.error || 'No matching parsing rule found',
             })
             .eq('id', rawEmail.id)
           emailsFailed++
