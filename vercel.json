@@ -1,4 +1,6 @@
 {
+  "buildCommand": "pnpm run build",
+  "framework": "nextjs",
   "crons": [
     {
       "path": "/api/cron/sync-gmail",
