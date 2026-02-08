@@ -35,7 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Pencil, Trash2, Check, X, CheckSquare } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, CheckSquare, UserPlus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
 import { format } from 'date-fns'
@@ -60,6 +60,10 @@ export default function PurchasesPage() {
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(new Set())
+
+  // Bulk assign employee dialog
+  const [bulkAssignDialogOpen, setBulkAssignDialogOpen] = useState(false)
+  const [bulkAssignEmployeeId, setBulkAssignEmployeeId] = useState('')
 
   const [formData, setFormData] = useState({
     purchase_date: '',
@@ -343,6 +347,68 @@ export default function PurchasesPage() {
     }
   }
 
+  // Bulk operations
+  const handleBulkMarkReviewed = async () => {
+    if (selectedPurchases.size === 0) return
+
+    try {
+      const selectedIds = Array.from(selectedPurchases)
+      
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ is_reviewed: true })
+        .in('id', selectedIds)
+        .select()
+
+      if (error) throw error
+      
+      // Update Redux store
+      data.forEach(purchase => {
+        dispatch(updatePurchase(purchase))
+      })
+
+      toast.success(`Marked ${selectedIds.length} purchase${selectedIds.length === 1 ? '' : 's'} as reviewed`)
+      setSelectedPurchases(new Set()) // Clear selection
+    } catch (error: any) {
+      console.error('Error bulk marking as reviewed:', error)
+      toast.error('Failed to mark purchases as reviewed')
+    }
+  }
+
+  const handleBulkAssignEmployee = async () => {
+    if (!bulkAssignEmployeeId || selectedPurchases.size === 0) {
+      toast.error('Please select an employee')
+      return
+    }
+
+    try {
+      const selectedIds = Array.from(selectedPurchases)
+      
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ employee_id: bulkAssignEmployeeId })
+        .in('id', selectedIds)
+        .select()
+
+      if (error) throw error
+      
+      // Update Redux store
+      data.forEach(purchase => {
+        dispatch(updatePurchase(purchase))
+      })
+
+      const employeeName = employees.find(e => e.id === bulkAssignEmployeeId)?.name || 'employee'
+      toast.success(`Assigned ${selectedIds.length} purchase${selectedIds.length === 1 ? '' : 's'} to ${employeeName}`)
+      
+      setBulkAssignDialogOpen(false)
+      setBulkAssignEmployeeId('')
+      setSelectedPurchases(new Set()) // Clear selection
+    } catch (error: any) {
+      console.error('Error bulk assigning employee:', error)
+      toast.error('Failed to assign employee')
+    }
+  }
+
   // Selection mode functions
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode)
@@ -563,26 +629,90 @@ export default function PurchasesPage() {
         />
       </div>
 
-      {/* Selection Summary */}
+      {/* Selection Summary with Bulk Actions */}
       {selectionMode && selectedPurchases.size > 0 && (
         <div className="mb-4 rounded-lg border bg-blue-50 border-blue-200 p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-4">
-              <span className="font-semibold text-blue-900">
-                {selectionSummary.count} {selectionSummary.count === 1 ? 'purchase' : 'purchases'} selected
-              </span>
-              <span className="text-blue-700">
-                Total: ${selectionSummary.total.toFixed(2)}
-              </span>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-4">
+                <span className="font-semibold text-blue-900">
+                  {selectionSummary.count} {selectionSummary.count === 1 ? 'purchase' : 'purchases'} selected
+                </span>
+                <span className="text-blue-700">
+                  Total: ${selectionSummary.total.toFixed(2)}
+                </span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={clearSelection}
+                className="w-full sm:w-auto"
+              >
+                Clear Selection
+              </Button>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={clearSelection}
-              className="w-full sm:w-auto"
-            >
-              Clear Selection
-            </Button>
+            
+            {/* Bulk Action Buttons */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <Button
+                variant="default"
+                size="sm"
+                onClick={handleBulkMarkReviewed}
+                className="w-full sm:w-auto"
+              >
+                <Check className="mr-2 h-4 w-4" />
+                Mark as Reviewed
+              </Button>
+              
+              <Dialog open={bulkAssignDialogOpen} onOpenChange={setBulkAssignDialogOpen}>
+                <DialogTrigger asChild>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="w-full sm:w-auto"
+                  >
+                    <UserPlus className="mr-2 h-4 w-4" />
+                    Assign to Employee
+                  </Button>
+                </DialogTrigger>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Assign to Employee</DialogTitle>
+                    <DialogDescription>
+                      Assign {selectionSummary.count} selected purchase{selectionSummary.count === 1 ? '' : 's'} to an employee
+                    </DialogDescription>
+                  </DialogHeader>
+                  <div className="space-y-4 py-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="bulk-employee">Select Employee</Label>
+                      <Select
+                        value={bulkAssignEmployeeId}
+                        onValueChange={setBulkAssignEmployeeId}
+                      >
+                        <SelectTrigger id="bulk-employee">
+                          <SelectValue placeholder="Select employee" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {employees.map((employee) => (
+                            <SelectItem key={employee.id} value={employee.id}>
+                              {employee.name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setBulkAssignDialogOpen(false)}>
+                      Cancel
+                    </Button>
+                    <Button onClick={handleBulkAssignEmployee}>
+                      Assign
+                    </Button>
+                  </DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </div>
           </div>
         </div>
       )}
