@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
 import { setPurchases, addPurchase, updatePurchase, deletePurchase } from '@/lib/store/slices/purchasesSlice'
@@ -51,6 +52,7 @@ export default function PurchasesPage() {
   const { cards } = useAppSelector((state) => state.cards)
   const { categories } = useAppSelector((state) => state.categories)
   const dispatch = useAppDispatch()
+  const searchParams = useSearchParams()
   const supabase = createClient()
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -163,6 +165,24 @@ export default function PurchasesPage() {
       fetchCategories()
     }
   }, [user])
+
+  // Read URL parameters and apply filters from shift navigation
+  useEffect(() => {
+    const cardId = searchParams.get('cardId')
+    const employeeId = searchParams.get('employeeId')
+    const startDate = searchParams.get('startDate')
+    const endDate = searchParams.get('endDate')
+
+    if (cardId || employeeId || startDate || endDate) {
+      setFilters(prev => ({
+        ...prev,
+        cardIds: cardId ? [cardId] : [],
+        employeeIds: employeeId ? [employeeId] : [],
+        startDate: startDate ? new Date(startDate) : null,
+        endDate: endDate ? new Date(endDate) : null,
+      }))
+    }
+  }, [searchParams])
 
   const fetchPurchases = async () => {
     console.log("🔍 Fetching purchases for user:", user?.id)

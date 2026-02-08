@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useMemo } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector } from '@/lib/store/hooks'
 import {
@@ -74,6 +75,7 @@ interface Employee {
 
 export default function ShiftsPage() {
   const { user } = useAppSelector((state) => state.auth)
+  const router = useRouter()
   const supabase = createClient()
   const [shifts, setShifts] = useState<CardShift[]>([])
   const [purchases, setPurchases] = useState<Purchase[]>([])
@@ -203,6 +205,20 @@ export default function ShiftsPage() {
     return statsMap
   }, [shifts, purchases])
 
+  const handleShiftClick = (shift: CardShift) => {
+    // Build URL with query parameters for filtering
+    const params = new URLSearchParams()
+    params.set('cardId', shift.card_id)
+    params.set('employeeId', shift.employee_id)
+    params.set('startDate', shift.start_time)
+    if (shift.end_time) {
+      params.set('endDate', shift.end_time)
+    }
+    
+    // Navigate to purchases page with filters
+    router.push(`/purchases?${params.toString()}`)
+  }
+
   const handleOpenDialog = () => {
     setFormData({
       card_id: '',
@@ -284,7 +300,10 @@ export default function ShiftsPage() {
     }
   }
 
-  const handleDelete = async (shiftId: string) => {
+  const handleDelete = async (shiftId: string, e: React.MouseEvent) => {
+    // Stop propagation to prevent row click
+    e.stopPropagation()
+    
     if (!confirm('Are you sure you want to delete this shift?')) return
 
     try {
@@ -331,7 +350,7 @@ export default function ShiftsPage() {
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Card Shifts</h1>
           <p className="mt-1 text-sm text-gray-600">
-            Track card assignment history, shift durations, and spending
+            Track card assignment history, shift durations, and spending. Click a shift to view purchases.
           </p>
         </div>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
@@ -499,7 +518,11 @@ export default function ShiftsPage() {
                 const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
                 
                 return (
-                  <TableRow key={shift.id}>
+                  <TableRow 
+                    key={shift.id}
+                    onClick={() => handleShiftClick(shift)}
+                    className="cursor-pointer hover:bg-gray-50 transition-colors"
+                  >
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
@@ -566,7 +589,7 @@ export default function ShiftsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDelete(shift.id)}
+                        onClick={(e) => handleDelete(shift.id, e)}
                       >
                         <Trash2 className="h-4 w-4 text-red-600" />
                       </Button>
