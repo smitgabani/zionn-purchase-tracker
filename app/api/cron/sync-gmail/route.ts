@@ -126,8 +126,8 @@ export async function GET(request: NextRequest) {
                   raw_email_id: rawEmail.id,
                   source: 'email',
                   description: messageDetails.subject,
-                  card_id: parseResult.card_id || null,
-                  employee_id: parseResult.employee_id || null,
+                  card_id: parseResult.data.card_id || null,
+                  employee_id: parseResult.data.employee_id || null,
                 })
 
               if (purchaseError) {
