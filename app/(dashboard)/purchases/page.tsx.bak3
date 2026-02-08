@@ -1,0 +1,574 @@
+'use client'
+
+import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
+import { setPurchases, addPurchase, updatePurchase, deletePurchase } from '@/lib/store/slices/purchasesSlice'
+import { setEmployees } from '@/lib/store/slices/employeesSlice'
+import { setCards } from '@/lib/store/slices/cardsSlice'
+import { setCategories } from '@/lib/store/slices/categoriesSlice'
+import { Button } from '@/components/ui/button'
+import { Input } from '@/components/ui/input'
+import { Label } from '@/components/ui/label'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select'
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from '@/components/ui/dialog'
+import { Badge } from '@/components/ui/badge'
+import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
+import { toast } from 'sonner'
+import { Database } from '@/lib/types/database.types'
+import { format } from 'date-fns'
+
+type Purchase = Database['public']['Tables']['purchases']['Row']
+type PurchaseInsert = Database['public']['Tables']['purchases']['Insert']
+
+export default function PurchasesPage() {
+  const { user } = useAppSelector((state) => state.auth)
+  const { purchases } = useAppSelector((state) => state.purchases)
+  const { employees } = useAppSelector((state) => state.employees)
+  const { cards } = useAppSelector((state) => state.cards)
+  const { categories } = useAppSelector((state) => state.categories)
+  const dispatch = useAppDispatch()
+  const supabase = createClient()
+
+  const [isDialogOpen, setIsDialogOpen] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [currentPurchase, setCurrentPurchase] = useState<Purchase | null>(null)
+  
+  const [formData, setFormData] = useState({
+    amount: '',
+    merchant: '',
+    description: '',
+    purchase_date: format(new Date(), 'yyyy-MM-dd'),
+    card_id: '',
+    category_id: '',
+    employee_id: '',
+    notes: '',
+  })
+
+  useEffect(() => {
+    if (user) {
+      fetchPurchases()
+      fetchEmployees()
+      fetchCards()
+      fetchCategories()
+    }
+  }, [user])
+
+  const fetchPurchases = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('purchases')
+        .select('*')
+        .order('created_at', { ascending: false })
+
+      if (error) throw error
+      dispatch(setPurchases(data || []))
+    } catch (error) {
+      toast.error('Failed to load purchases')
+      console.error(error)
+    }
+  }
+
+  const fetchEmployees = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('employees')
+        .select('*')
+        .eq('is_active', true)
+
+      if (error) throw error
+      dispatch(setEmployees(data || []))
+    } catch (error) {
+      console.error('Failed to load employees:', error)
+    }
+  }
+
+  const fetchCards = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('cards')
+        .select('*')
+        .eq('is_active', true)
+
+      if (error) throw error
+      dispatch(setCards(data || []))
+    } catch (error) {
+      console.error('Failed to load cards:', error)
+    }
+  }
+
+  const fetchCategories = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('categories')
+        .select('*')
+
+      if (error) throw error
+      dispatch(setCategories(data || []))
+    } catch (error) {
+      console.error('Failed to load categories:', error)
+    }
+  }
+
+  const handleOpenDialog = (purchase?: Purchase) => {
+    if (purchase) {
+      setIsEditing(true)
+      setCurrentPurchase(purchase)
+      setFormData({
+        amount: purchase.amount.toString(),
+        merchant: purchase.merchant || '',
+        description: purchase.description || '',
+        purchase_date: purchase.purchase_date,
+        card_id: purchase.card_id || '',
+        category_id: purchase.category_id || '',
+        employee_id: purchase.employee_id || '',
+        notes: purchase.notes || '',
+      })
+    } else {
+      setIsEditing(false)
+      setCurrentPurchase(null)
+      setFormData({
+        amount: '',
+        merchant: '',
+        description: '',
+        purchase_date: format(new Date(), 'yyyy-MM-dd'),
+        card_id: '',
+        category_id: '',
+        employee_id: '',
+        notes: '',
+      })
+    }
+    setIsDialogOpen(true)
+  }
+
+  const handleCloseDialog = () => {
+    setIsDialogOpen(false)
+    setIsEditing(false)
+    setCurrentPurchase(null)
+  }
+
+  // Auto-assign employee when card is selected
+  const handleCardChange = (cardId: string) => {
+    setFormData({ ...formData, card_id: cardId })
+    
+    if (cardId) {
+      const selectedCard = cards.find(c => c.id === cardId)
+      if (selectedCard?.employee_id) {
+        setFormData(prev => ({ ...prev, card_id: cardId, employee_id: selectedCard.employee_id || '' }))
+      }
+    }
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+
+    if (!user) return
+
+    const amount = parseFloat(formData.amount)
+    if (isNaN(amount) || amount <= 0) {
+      toast.error('Please enter a valid amount')
+      return
+    }
+
+    try {
+      if (isEditing && currentPurchase) {
+        // Update existing purchase
+        const { data, error } = await supabase
+          .from('purchases')
+          .update({
+            amount,
+            merchant: formData.merchant || null,
+            description: formData.description || null,
+            purchase_date: formData.purchase_date,
+            card_id: formData.card_id || null,
+            category_id: formData.category_id || null,
+            employee_id: formData.employee_id || null,
+            notes: formData.notes || null,
+          })
+          .eq('id', currentPurchase.id)
+          .select()
+          .single()
+
+        if (error) throw error
+        dispatch(updatePurchase(data))
+        toast.success('Purchase updated successfully')
+      } else {
+        // Create new purchase
+        const newPurchase: PurchaseInsert = {
+          admin_user_id: user.id,
+          amount,
+          merchant: formData.merchant || null,
+          description: formData.description || null,
+          purchase_date: formData.purchase_date,
+          card_id: formData.card_id || null,
+          category_id: formData.category_id || null,
+          employee_id: formData.employee_id || null,
+          notes: formData.notes || null,
+          source: 'manual',
+        }
+
+        const { data, error } = await supabase
+          .from('purchases')
+          .insert(newPurchase)
+          .select()
+          .single()
+
+        if (error) throw error
+        dispatch(addPurchase(data))
+        toast.success('Purchase added successfully')
+      }
+
+      handleCloseDialog()
+    } catch (error) {
+      toast.error('Failed to save purchase')
+      console.error(error)
+    }
+  }
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('Are you sure you want to delete this purchase?')) return
+
+    try {
+      const { error } = await supabase
+        .from('purchases')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      dispatch(deletePurchase(id))
+      toast.success('Purchase deleted successfully')
+    } catch (error) {
+      toast.error('Failed to delete purchase')
+      console.error(error)
+    }
+  }
+
+  const toggleReviewed = async (purchase: Purchase) => {
+    try {
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ is_reviewed: !purchase.is_reviewed })
+        .eq('id', purchase.id)
+        .select()
+        .single()
+
+      if (error) throw error
+      dispatch(updatePurchase(data))
+      toast.success(data.is_reviewed ? 'Marked as reviewed' : 'Marked as unreviewed')
+    } catch (error) {
+      toast.error('Failed to update purchase')
+      console.error(error)
+    }
+  }
+
+  const getEmployeeName = (employeeId: string | null) => {
+    if (!employeeId) return '-'
+    return employees.find(e => e.id === employeeId)?.name || 'Unknown'
+  }
+
+  const getCardDisplay = (cardId: string | null) => {
+    if (!cardId) return '-'
+    const card = cards.find(c => c.id === cardId)
+    return card ? `${card.bank_name} ****${card.last_four}` : 'Unknown'
+  }
+
+  const getCategoryName = (categoryId: string | null) => {
+    if (!categoryId) return '-'
+    return categories.find(c => c.id === categoryId)?.name || 'Unknown'
+  }
+
+  const getCategoryColor = (categoryId: string | null) => {
+    if (!categoryId) return '#6366f1'
+    return categories.find(c => c.id === categoryId)?.color || '#6366f1'
+  }
+
+  return (
+    <div>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900">Purchases</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            View and manage all purchase transactions
+          </p>
+        </div>
+        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+          <DialogTrigger asChild>
+            <Button onClick={() => handleOpenDialog()}>
+              <Plus className="mr-2 h-4 w-4" />
+              Add Purchase
+            </Button>
+          </DialogTrigger>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle>
+                {isEditing ? 'Edit Purchase' : 'Add Manual Purchase'}
+              </DialogTitle>
+              <DialogDescription>
+                {isEditing
+                  ? 'Update purchase details'
+                  : 'Manually add a purchase transaction'}
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleSubmit}>
+              <div className="grid gap-4 py-4 md:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="amount">Amount (CAD) *</Label>
+                  <Input
+                    id="amount"
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00"
+                    value={formData.amount}
+                    onChange={(e) =>
+                      setFormData({ ...formData, amount: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="purchase_date">Date *</Label>
+                  <Input
+                    id="purchase_date"
+                    type="date"
+                    value={formData.purchase_date}
+                    onChange={(e) =>
+                      setFormData({ ...formData, purchase_date: e.target.value })
+                    }
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="merchant">Merchant</Label>
+                  <Input
+                    id="merchant"
+                    placeholder="Amazon, Walmart, etc."
+                    value={formData.merchant}
+                    onChange={(e) =>
+                      setFormData({ ...formData, merchant: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="card_id">Card</Label>
+                  <Select
+                    value={formData.card_id}
+                    onValueChange={handleCardChange}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select card" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {cards.map((card) => (
+                        <SelectItem key={card.id} value={card.id}>
+                          {card.bank_name} ****{card.last_four}
+                          {card.nickname && ` (${card.nickname})`}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="employee_id">Employee</Label>
+                  <Select
+                    value={formData.employee_id}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, employee_id: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select employee" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {employees.map((employee) => (
+                        <SelectItem key={employee.id} value={employee.id}>
+                          {employee.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="category_id">Category</Label>
+                  <Select
+                    value={formData.category_id}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, category_id: value })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select category" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">None</SelectItem>
+                      {categories.map((category) => (
+                        <SelectItem key={category.id} value={category.id}>
+                          <div className="flex items-center gap-2">
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{ backgroundColor: category.color }}
+                            />
+                            {category.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="description">Description</Label>
+                  <Input
+                    id="description"
+                    placeholder="Purchase description"
+                    value={formData.description}
+                    onChange={(e) =>
+                      setFormData({ ...formData, description: e.target.value })
+                    }
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-2">
+                  <Label htmlFor="notes">Notes</Label>
+                  <Input
+                    id="notes"
+                    placeholder="Additional notes"
+                    value={formData.notes}
+                    onChange={(e) =>
+                      setFormData({ ...formData, notes: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleCloseDialog}
+                >
+                  Cancel
+                </Button>
+                <Button type="submit">
+                  {isEditing ? 'Update' : 'Add'} Purchase
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="rounded-lg border bg-white">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Date</TableHead>
+              <TableHead>Merchant</TableHead>
+              <TableHead>Amount</TableHead>
+              <TableHead>Employee</TableHead>
+              <TableHead>Category</TableHead>
+              <TableHead>Source</TableHead>
+              <TableHead>Reviewed</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {purchases.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={8} className="text-center text-gray-500">
+                  No purchases yet. Add your first purchase or sync from Gmail.
+                </TableCell>
+              </TableRow>
+            ) : (
+              purchases.map((purchase) => (
+                <TableRow key={purchase.id}>
+                  <TableCell>
+                    {format(new Date(purchase.created_at), 'MMM dd, HH:mm')}
+                  </TableCell>
+                  <TableCell className="font-medium">
+                    {purchase.merchant || '-'}
+                  </TableCell>
+                  <TableCell>${purchase.amount.toFixed(2)}</TableCell>
+                  <TableCell>{getEmployeeName(purchase.employee_id)}</TableCell>
+                  <TableCell className="text-sm text-gray-600">
+                    {getCardDisplay(purchase.card_id)}
+                  </TableCell>
+                  <TableCell>
+                    {purchase.category_id ? (
+                      <Badge
+                        style={{
+                          backgroundColor: getCategoryColor(purchase.category_id),
+                          color: 'white',
+                        }}
+                      >
+                        {getCategoryName(purchase.category_id)}
+                      </Badge>
+                    ) : (
+                      '-'
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant={purchase.source === 'email' ? 'default' : 'outline'}>
+                      {purchase.source}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => toggleReviewed(purchase)}
+                    >
+                      {purchase.is_reviewed ? (
+                        <Check className="h-4 w-4 text-green-600" />
+                      ) : (
+                        <X className="h-4 w-4 text-gray-400" />
+                      )}
+                    </Button>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleOpenDialog(purchase)}
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handleDelete(purchase.id)}
+                      >
+                        <Trash2 className="h-4 w-4 text-red-500" />
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  )
+}
