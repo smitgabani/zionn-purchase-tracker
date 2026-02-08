@@ -261,6 +261,19 @@ export default function ShiftsPage() {
 
       if (error) throw error
 
+      // If this is an active shift (no end time), update the card's current_employee_id
+      if (!endTime) {
+        const { error: cardError } = await supabase
+          .from('cards')
+          .update({ current_employee_id: formData.employee_id })
+          .eq('id', formData.card_id)
+
+        if (cardError) {
+          console.error('Error updating card assignment:', cardError)
+          // Don't fail the whole operation, just log the error
+        }
+      }
+
       // Add to local state
       setShifts([data, ...shifts])
       toast.success('Shift created successfully')
