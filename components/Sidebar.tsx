@@ -12,8 +12,6 @@ import {
   Tag,
   FileText,
   Mail,
-  Inbox,
-  Wrench,
   Settings,
   X,
 } from 'lucide-react'
@@ -25,10 +23,7 @@ const navigation = [
   { name: 'Employees', href: '/employees', icon: Users },
   { name: 'Cards', href: '/cards', icon: CreditCard },
   { name: 'Shifts', href: '/shifts', icon: Clock },
-  { name: 'Emails', href: '/emails', icon: Inbox },
-  { name: 'Parsing Rules', href: '/parsing-rules', icon: FileText },
   { name: 'Gmail Settings', href: '/gmail-settings', icon: Mail },
-  { name: 'Tools', href: '/tools', icon: Wrench },
 ]
 
 interface SidebarProps {
