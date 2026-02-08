@@ -120,9 +120,9 @@ export async function GET(request: NextRequest) {
                 .from('purchases')
                 .insert({
                   admin_user_id: syncState.admin_user_id,
-                  amount: parseResult.amount,
-                  merchant: parseResult.merchant,
-                  purchase_date: parseResult.date || new Date().toISOString().split('T')[0],
+                  amount: parseResult.data.amount,
+                  merchant: parseResult.data.merchant,
+                  purchase_date: parseResult.data.purchase_date || new Date().toISOString().split('T')[0],
                   raw_email_id: rawEmail.id,
                   source: 'email',
                   description: messageDetails.subject,
@@ -136,7 +136,7 @@ export async function GET(request: NextRequest) {
                   .update({
                     parsed: true,
                     parse_error: purchaseError.message,
-                    parsing_rule_id: parseResult.rule_id,
+                    parsing_rule_id: parseResult.ruleId,
                   })
                   .eq('id', rawEmail.id)
                 userFailed++
@@ -145,7 +145,7 @@ export async function GET(request: NextRequest) {
                   .from('raw_emails')
                   .update({
                     parsed: true,
-                    parsing_rule_id: parseResult.rule_id,
+                    parsing_rule_id: parseResult.ruleId,
                   })
                   .eq('id', rawEmail.id)
                 userSynced++
