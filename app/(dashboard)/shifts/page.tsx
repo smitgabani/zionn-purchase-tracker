@@ -32,7 +32,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Clock, Trash2, DollarSign, ShoppingCart, Plus } from 'lucide-react'
+import { Clock, Trash2, DollarSign, ShoppingCart, Plus, StopCircle } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -93,6 +93,17 @@ export default function ShiftsPage() {
     end_time_enabled: false,
     end_time: '',
   })
+
+  // Separate ongoing and ended shifts
+  const ongoingShifts = useMemo(() => 
+    shifts.filter(s => !s.end_time),
+    [shifts]
+  )
+
+  const endedShifts = useMemo(() => 
+    shifts.filter(s => s.end_time),
+    [shifts]
+  )
 
   useEffect(() => {
     if (user) {
@@ -219,6 +230,47 @@ export default function ShiftsPage() {
     router.push(`/purchases?${params.toString()}`)
   }
 
+  const handleEndShift = async (shift: CardShift, e: React.MouseEvent) => {
+    // Stop propagation to prevent row click
+    e.stopPropagation()
+    
+    if (!confirm('End this shift now?')) return
+
+    try {
+      const endTime = new Date().toISOString()
+
+      const { data, error } = await supabase
+        .from('card_shifts')
+        .update({ end_time: endTime })
+        .eq('id', shift.id)
+        .select(`
+          *,
+          cards(last_four, nickname, bank_name),
+          employees(name)
+        `)
+        .single()
+
+      if (error) throw error
+
+      // Update card to unassign employee
+      const { error: cardError } = await supabase
+        .from('cards')
+        .update({ current_employee_id: null })
+        .eq('id', shift.card_id)
+
+      if (cardError) {
+        console.error('Error updating card assignment:', cardError)
+      }
+
+      // Update local state
+      setShifts(shifts.map(s => s.id === shift.id ? data : s))
+      toast.success('Shift ended successfully')
+    } catch (error: any) {
+      console.error('Error ending shift:', error)
+      toast.error('Failed to end shift')
+    }
+  }
+
   const handleOpenDialog = () => {
     setFormData({
       card_id: '',
@@ -342,6 +394,98 @@ export default function ShiftsPage() {
       return `${hours}h ${minutes}m`
     }
     return `${minutes}m`
+  }
+
+  const renderShiftRow = (shift: CardShift) => {
+    const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
+    
+    return (
+      <TableRow 
+        key={shift.id}
+        onClick={() => handleShiftClick(shift)}
+        className="cursor-pointer hover:bg-gray-50 transition-colors"
+      >
+        <TableCell className="font-medium">
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
+            <div>
+              <div>{getCardDisplay(shift)}</div>
+              <div className="text-xs text-gray-500">
+                {shift.cards.bank_name}
+              </div>
+            </div>
+          </div>
+        </TableCell>
+        <TableCell>{shift.employees.name}</TableCell>
+        <TableCell>
+          <div className="text-sm">
+            {format(new Date(shift.start_time), 'MMM dd, yyyy')}
+          </div>
+          <div className="text-xs text-gray-500">
+            {format(new Date(shift.start_time), 'HH:mm:ss')}
+          </div>
+        </TableCell>
+        <TableCell>
+          {shift.end_time ? (
+            <>
+              <div className="text-sm">
+                {format(new Date(shift.end_time), 'MMM dd, yyyy')}
+              </div>
+              <div className="text-xs text-gray-500">
+                {format(new Date(shift.end_time), 'HH:mm:ss')}
+              </div>
+            </>
+          ) : (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={(e) => handleEndShift(shift, e)}
+              className="text-orange-600 hover:text-orange-700 hover:bg-orange-50"
+            >
+              <StopCircle className="mr-1 h-4 w-4" />
+              End Shift
+            </Button>
+          )}
+        </TableCell>
+        <TableCell>
+          <span className="text-sm font-medium">
+            {calculateDuration(shift.start_time, shift.end_time)}
+          </span>
+        </TableCell>
+        <TableCell>
+          {shift.end_time ? (
+            <Badge variant="secondary">Ended</Badge>
+          ) : (
+            <Badge variant="default">Active</Badge>
+          )}
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="flex items-center justify-end gap-1">
+            <ShoppingCart className="h-4 w-4 text-gray-400" />
+            <span className="font-semibold text-gray-900">
+              {stats.count}
+            </span>
+          </div>
+        </TableCell>
+        <TableCell className="text-right">
+          <div className="flex items-center justify-end gap-1">
+            <DollarSign className="h-4 w-4 text-green-600" />
+            <span className="font-semibold text-green-700">
+              ${stats.total.toFixed(2)}
+            </span>
+          </div>
+        </TableCell>
+        <TableCell className="text-right">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={(e) => handleDelete(shift.id, e)}
+          >
+            <Trash2 className="h-4 w-4 text-red-600" />
+          </Button>
+        </TableCell>
+      </TableRow>
+    )
   }
 
   return (
@@ -485,122 +629,80 @@ export default function ShiftsPage() {
         </Dialog>
       </div>
 
-      <div className="rounded-lg border bg-white overflow-x-auto">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Card</TableHead>
-              <TableHead>Employee</TableHead>
-              <TableHead>Start Time</TableHead>
-              <TableHead>End Time</TableHead>
-              <TableHead>Duration</TableHead>
-              <TableHead>Status</TableHead>
-              <TableHead className="text-right">Purchases</TableHead>
-              <TableHead className="text-right">Total Spending</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {loading ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center text-gray-500">
-                  Loading shifts...
-                </TableCell>
-              </TableRow>
-            ) : shifts.length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={9} className="text-center text-gray-500">
-                  No shifts recorded yet. Create a shift to start tracking.
-                </TableCell>
-              </TableRow>
-            ) : (
-              shifts.map((shift) => {
-                const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
-                
-                return (
-                  <TableRow 
-                    key={shift.id}
-                    onClick={() => handleShiftClick(shift)}
-                    className="cursor-pointer hover:bg-gray-50 transition-colors"
-                  >
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
-                        <div>
-                          <div>{getCardDisplay(shift)}</div>
-                          <div className="text-xs text-gray-500">
-                            {shift.cards.bank_name}
-                          </div>
-                        </div>
-                      </div>
-                    </TableCell>
-                    <TableCell>{shift.employees.name}</TableCell>
-                    <TableCell>
-                      <div className="text-sm">
-                        {format(new Date(shift.start_time), 'MMM dd, yyyy')}
-                      </div>
-                      <div className="text-xs text-gray-500">
-                        {format(new Date(shift.start_time), 'HH:mm:ss')}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      {shift.end_time ? (
-                        <>
-                          <div className="text-sm">
-                            {format(new Date(shift.end_time), 'MMM dd, yyyy')}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            {format(new Date(shift.end_time), 'HH:mm:ss')}
-                          </div>
-                        </>
-                      ) : (
-                        <span className="text-gray-400">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <span className="text-sm font-medium">
-                        {calculateDuration(shift.start_time, shift.end_time)}
-                      </span>
-                    </TableCell>
-                    <TableCell>
-                      {shift.end_time ? (
-                        <Badge variant="secondary">Ended</Badge>
-                      ) : (
-                        <Badge variant="default">Active</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <ShoppingCart className="h-4 w-4 text-gray-400" />
-                        <span className="font-semibold text-gray-900">
-                          {stats.count}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <div className="flex items-center justify-end gap-1">
-                        <DollarSign className="h-4 w-4 text-green-600" />
-                        <span className="font-semibold text-green-700">
-                          ${stats.total.toFixed(2)}
-                        </span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-right">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={(e) => handleDelete(shift.id, e)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </TableCell>
-                  </TableRow>
-                )
-              })
-            )}
-          </TableBody>
-        </Table>
-      </div>
+      {loading ? (
+        <div className="rounded-lg border bg-white p-8 text-center text-gray-500">
+          Loading shifts...
+        </div>
+      ) : (
+        <>
+          {/* Ongoing Shifts */}
+          {ongoingShifts.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Badge variant="default">{ongoingShifts.length}</Badge>
+                Ongoing Shifts
+              </h2>
+              <div className="rounded-lg border bg-white overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Card</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Start Time</TableHead>
+                      <TableHead>End Time</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Purchases</TableHead>
+                      <TableHead className="text-right">Total Spending</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {ongoingShifts.map(renderShiftRow)}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {/* Ended Shifts */}
+          {endedShifts.length > 0 && (
+            <div>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
+                <Badge variant="secondary">{endedShifts.length}</Badge>
+                Ended Shifts
+              </h2>
+              <div className="rounded-lg border bg-white overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Card</TableHead>
+                      <TableHead>Employee</TableHead>
+                      <TableHead>Start Time</TableHead>
+                      <TableHead>End Time</TableHead>
+                      <TableHead>Duration</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead className="text-right">Purchases</TableHead>
+                      <TableHead className="text-right">Total Spending</TableHead>
+                      <TableHead className="text-right">Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {endedShifts.map(renderShiftRow)}
+                  </TableBody>
+                </Table>
+              </div>
+            </div>
+          )}
+
+          {/* Empty state */}
+          {shifts.length === 0 && (
+            <div className="rounded-lg border bg-white p-8 text-center text-gray-500">
+              No shifts recorded yet. Create a shift to start tracking.
+            </div>
+          )}
+        </>
+      )}
     </div>
   )
 }
