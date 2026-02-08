@@ -112,11 +112,7 @@ export async function GET(request: NextRequest) {
 
             // Parse email
             const parser = new EmailParser(parsingRules || [])
-            const parseResult = parser.parse({
-              sender: messageDetails.from,
-              subject: messageDetails.subject,
-              body: messageDetails.body,
-            })
+            const parseResult = parser.parse(rawEmail)
 
             if (parseResult) {
               // Create purchase
