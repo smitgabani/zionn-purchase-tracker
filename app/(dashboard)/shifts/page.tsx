@@ -12,7 +12,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { Badge } from '@/components/ui/badge'
-import { Clock } from 'lucide-react'
+import { Button } from '@/components/ui/button'
+import { Clock, Trash2 } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 
@@ -69,6 +70,26 @@ export default function ShiftsPage() {
     }
   }
 
+  const handleDelete = async (shiftId: string) => {
+    if (!confirm('Are you sure you want to delete this shift?')) return
+
+    try {
+      const { error } = await supabase
+        .from('card_shifts')
+        .delete()
+        .eq('id', shiftId)
+
+      if (error) throw error
+      
+      // Remove from local state
+      setShifts(shifts.filter(s => s.id !== shiftId))
+      toast.success('Shift deleted successfully')
+    } catch (error: any) {
+      console.error('Error deleting shift:', error)
+      toast.error('Failed to delete shift')
+    }
+  }
+
   const getCardDisplay = (shift: CardShift) => {
     if (shift.cards.nickname) {
       return `${shift.cards.nickname} (**** ${shift.cards.last_four})`
@@ -109,18 +130,19 @@ export default function ShiftsPage() {
               <TableHead>End Time</TableHead>
               <TableHead>Duration</TableHead>
               <TableHead>Status</TableHead>
+              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {loading ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-gray-500">
+                <TableCell colSpan={7} className="text-center text-gray-500">
                   Loading shifts...
                 </TableCell>
               </TableRow>
             ) : shifts.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center text-gray-500">
+                <TableCell colSpan={7} className="text-center text-gray-500">
                   No shifts recorded yet. Assign cards to employees to start tracking.
                 </TableCell>
               </TableRow>
@@ -129,7 +151,7 @@ export default function ShiftsPage() {
                 <TableRow key={shift.id}>
                   <TableCell className="font-medium">
                     <div className="flex items-center gap-2">
-                      <Clock className="h-4 w-4 text-gray-400" />
+                      <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
                       <div>
                         <div>{getCardDisplay(shift)}</div>
                         <div className="text-xs text-gray-500">
@@ -172,6 +194,15 @@ export default function ShiftsPage() {
                     ) : (
                       <Badge variant="default">Active</Badge>
                     )}
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleDelete(shift.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-red-600" />
+                    </Button>
                   </TableCell>
                 </TableRow>
               ))
