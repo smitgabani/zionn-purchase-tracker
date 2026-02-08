@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
             const parser = new EmailParser(parsingRules || [])
             const parseResult = parser.parse(rawEmail)
 
-            if (parseResult) {
+            if (parseResult.success && parseResult.data) {
               // Create purchase
               const { error: purchaseError } = await supabase
                 .from('purchases')
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
                 .from('raw_emails')
                 .update({
                   parsed: false,
-                  parse_error: 'No matching parsing rule found',
+                  parse_error: parseResult.error || 'No matching parsing rule found',
                 })
                 .eq('id', rawEmail.id)
               userFailed++
