@@ -44,8 +44,6 @@ export default function EmployeesPage() {
   
   const [formData, setFormData] = useState({
     name: '',
-    email: '',
-    department: '',
     notes: '',
   })
 
@@ -76,8 +74,6 @@ export default function EmployeesPage() {
       setCurrentEmployee(employee)
       setFormData({
         name: employee.name,
-        email: employee.email || '',
-        department: employee.department || '',
         notes: employee.notes || '',
       })
     } else {
@@ -85,8 +81,6 @@ export default function EmployeesPage() {
       setCurrentEmployee(null)
       setFormData({
         name: '',
-        email: '',
-        department: '',
         notes: '',
       })
     }
@@ -99,8 +93,6 @@ export default function EmployeesPage() {
     setCurrentEmployee(null)
     setFormData({
       name: '',
-      email: '',
-      department: '',
       notes: '',
     })
   }
@@ -117,8 +109,6 @@ export default function EmployeesPage() {
           .from('employees')
           .update({
             name: formData.name,
-            email: formData.email || null,
-            department: formData.department || null,
             notes: formData.notes || null,
           })
           .eq('id', currentEmployee.id)
@@ -133,8 +123,6 @@ export default function EmployeesPage() {
         const newEmployee: EmployeeInsert = {
           admin_user_id: user.id,
           name: formData.name,
-          email: formData.email || null,
-          department: formData.department || null,
           notes: formData.notes || null,
         }
 
@@ -215,27 +203,6 @@ export default function EmployeesPage() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) =>
-                      setFormData({ ...formData, email: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="department">Department</Label>
-                  <Input
-                    id="department"
-                    value={formData.department}
-                    onChange={(e) =>
-                      setFormData({ ...formData, department: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
                   <Label htmlFor="notes">Notes</Label>
                   <Input
                     id="notes"
@@ -267,27 +234,21 @@ export default function EmployeesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Name</TableHead>
-              <TableHead>Email</TableHead>
-              <TableHead>Department</TableHead>
-              <TableHead>Status</TableHead>
+              <TableHead>Name</TableHead>              <TableHead>Status</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {employees.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={5} className="text-center text-gray-500">
+                <TableCell colSpan={3} className="text-center text-gray-500">
                   No employees yet. Add your first employee to get started.
                 </TableCell>
               </TableRow>
             ) : (
               employees.map((employee) => (
                 <TableRow key={employee.id}>
-                  <TableCell className="font-medium">{employee.name}</TableCell>
-                  <TableCell>{employee.email || '-'}</TableCell>
-                  <TableCell>{employee.department || '-'}</TableCell>
-                  <TableCell>
+                  <TableCell className="font-medium">{employee.name}</TableCell>                  <TableCell>
                     <Badge variant={employee.is_active ? 'default' : 'secondary'}>
                       {employee.is_active ? 'Active' : 'Inactive'}
                     </Badge>
