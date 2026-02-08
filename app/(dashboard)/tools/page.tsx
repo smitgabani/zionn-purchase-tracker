@@ -62,6 +62,7 @@ export default function ToolsPage() {
           endpoint: '/api/parser/parse-emails',
           icon: PlayCircle,
           variant: 'default' as const,
+          method: 'POST' as const,
         },
         {
           id: 'reset-emails',
@@ -70,6 +71,7 @@ export default function ToolsPage() {
           endpoint: '/api/debug/reset-emails',
           icon: RefreshCw,
           variant: 'outline' as const,
+          method: 'POST' as const,
           confirm: 'This will mark all emails as unparsed. Continue?',
         },
       ],
@@ -86,6 +88,7 @@ export default function ToolsPage() {
           endpoint: '/api/gmail/sync',
           icon: RefreshCw,
           variant: 'default' as const,
+          method: 'POST' as const,
         },
       ],
     },
@@ -141,7 +144,7 @@ export default function ToolsPage() {
                     </p>
                     <div className="mt-2">
                       <Badge variant="outline" className="text-xs">
-                        {action.method || 'POST'} {action.endpoint}
+                        {action.method} {action.endpoint}
                       </Badge>
                     </div>
                   </div>
@@ -153,7 +156,7 @@ export default function ToolsPage() {
                       handleAction(
                         action.id,
                         action.endpoint,
-                        action.method || 'POST'
+                        action.method
                       )
                     }}
                     disabled={loading === action.id}
