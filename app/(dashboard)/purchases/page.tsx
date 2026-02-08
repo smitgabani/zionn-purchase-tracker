@@ -35,7 +35,7 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Pencil, Trash2, Check, X } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, CheckSquare } from 'lucide-react'
 import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
 import { format } from 'date-fns'
@@ -56,6 +56,10 @@ export default function PurchasesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [currentPurchase, setCurrentPurchase] = useState<Purchase | null>(null)
+
+  // Selection mode state
+  const [selectionMode, setSelectionMode] = useState(false)
+  const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(new Set())
 
   const [formData, setFormData] = useState({
     purchase_date: '',
@@ -122,7 +126,7 @@ export default function PurchasesPage() {
     // Source filter
     if (filters.source !== null) {
       filtered = filtered.filter(p => 
-        filters.source === "email" ? p.raw_email_id !== null : p.raw_email_id === null
+        filters.source === 'email' ? p.raw_email_id !== null : p.raw_email_id === null
       )
     }
 
@@ -134,8 +138,19 @@ export default function PurchasesPage() {
     return filtered
   }, [purchases, filters])
 
+  // Calculate selection summary
+  const selectionSummary = useMemo(() => {
+    const selected = filteredPurchases.filter(p => selectedPurchases.has(p.id))
+    const total = selected.reduce((sum, p) => sum + p.amount, 0)
+    return {
+      count: selected.length,
+      total: total
+    }
+  }, [filteredPurchases, selectedPurchases])
+
   // Debug: log filter results after useMemo completes
   console.log("📊 Total purchases:", purchases.length, "Filtered:", filteredPurchases.length, "Active filters:", Object.values(filters).filter(v => v !== null && (Array.isArray(v) ? v.length > 0 : v !== "")).length)
+
   useEffect(() => {
     if (user) {
       fetchPurchases()
@@ -247,6 +262,7 @@ export default function PurchasesPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
     if (!user) return
 
     try {
@@ -327,6 +343,39 @@ export default function PurchasesPage() {
     }
   }
 
+  // Selection mode functions
+  const toggleSelectionMode = () => {
+    setSelectionMode(!selectionMode)
+    if (selectionMode) {
+      // Clear selections when exiting selection mode
+      setSelectedPurchases(new Set())
+    }
+  }
+
+  const togglePurchaseSelection = (purchaseId: string) => {
+    const newSelected = new Set(selectedPurchases)
+    if (newSelected.has(purchaseId)) {
+      newSelected.delete(purchaseId)
+    } else {
+      newSelected.add(purchaseId)
+    }
+    setSelectedPurchases(newSelected)
+  }
+
+  const toggleSelectAll = () => {
+    if (selectedPurchases.size === filteredPurchases.length) {
+      // Deselect all
+      setSelectedPurchases(new Set())
+    } else {
+      // Select all filtered
+      setSelectedPurchases(new Set(filteredPurchases.map(p => p.id)))
+    }
+  }
+
+  const clearSelection = () => {
+    setSelectedPurchases(new Set())
+  }
+
   const getEmployeeName = (employeeId: string | null) => {
     if (!employeeId) return 'N/A'
     return employees.find(e => e.id === employeeId)?.name || 'Unknown'
@@ -345,153 +394,163 @@ export default function PurchasesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Purchases</h1>
           <p className="mt-1 text-sm text-gray-600">
             View and manage all purchase transactions
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => handleOpenDialog()}>
-              <Plus className="mr-2 h-4 w-4" />
-              Add Purchase
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-2xl">
-            <DialogHeader>
-              <DialogTitle>
-                {isEditing ? 'Edit Purchase' : 'Add Manual Purchase'}
-              </DialogTitle>
-              <DialogDescription>
-                {isEditing
-                  ? 'Update purchase details'
-                  : 'Manually add a purchase transaction'}
-              </DialogDescription>
-            </DialogHeader>
-            <form onSubmit={handleSubmit}>
-              <div className="grid gap-4 py-4 md:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="amount">Amount (CAD) *</Label>
-                  <Input
-                    id="amount"
-                    type="number"
-                    step="0.01"
-                    placeholder="0.00"
-                    value={formData.amount}
-                    onChange={(e) =>
-                      setFormData({ ...formData, amount: e.target.value })
-                    }
-                    required
-                  />
+        <div className="flex gap-2 w-full sm:w-auto">
+          <Button
+            variant={selectionMode ? "outline" : "secondary"}
+            onClick={toggleSelectionMode}
+            className="flex-1 sm:flex-none"
+          >
+            <CheckSquare className="mr-2 h-4 w-4" />
+            {selectionMode ? 'Cancel Selection' : 'Operations'}
+          </Button>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => handleOpenDialog()} className="flex-1 sm:flex-none">
+                <Plus className="mr-2 h-4 w-4" />
+                Add Purchase
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>
+                  {isEditing ? 'Edit Purchase' : 'Add Manual Purchase'}
+                </DialogTitle>
+                <DialogDescription>
+                  {isEditing
+                    ? 'Update purchase details'
+                    : 'Manually add a purchase transaction'}
+                </DialogDescription>
+              </DialogHeader>
+              <form onSubmit={handleSubmit}>
+                <div className="grid gap-4 py-4 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Amount (CAD) *</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      step="0.01"
+                      placeholder="0.00"
+                      value={formData.amount}
+                      onChange={(e) =>
+                        setFormData({ ...formData, amount: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="merchant">Merchant *</Label>
+                    <Input
+                      id="merchant"
+                      placeholder="Enter merchant name"
+                      value={formData.merchant}
+                      onChange={(e) =>
+                        setFormData({ ...formData, merchant: e.target.value })
+                      }
+                      required
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="purchase_date">Purchase Date</Label>
+                    <Input
+                      id="purchase_date"
+                      type="date"
+                      value={formData.purchase_date}
+                      onChange={(e) =>
+                        setFormData({ ...formData, purchase_date: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="employee_id">Employee</Label>
+                    <Select
+                      value={formData.employee_id}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, employee_id: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select employee" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {employees.map((employee) => (
+                          <SelectItem key={employee.id} value={employee.id}>
+                            {employee.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="card_id">Card</Label>
+                    <Select
+                      value={formData.card_id}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, card_id: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select card" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {cards.map((card) => (
+                          <SelectItem key={card.id} value={card.id}>
+                            **** {card.last_four}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="category_id">Category</Label>
+                    <Select
+                      value={formData.category_id}
+                      onValueChange={(value) =>
+                        setFormData({ ...formData, category_id: value })
+                      }
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select category" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">None</SelectItem>
+                        {categories.map((category) => (
+                          <SelectItem key={category.id} value={category.id}>
+                            {category.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2 space-y-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Input
+                      id="description"
+                      placeholder="Optional description"
+                      value={formData.description}
+                      onChange={(e) =>
+                        setFormData({ ...formData, description: e.target.value })
+                      }
+                    />
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="merchant">Merchant *</Label>
-                  <Input
-                    id="merchant"
-                    placeholder="Enter merchant name"
-                    value={formData.merchant}
-                    onChange={(e) =>
-                      setFormData({ ...formData, merchant: e.target.value })
-                    }
-                    required
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="purchase_date">Purchase Date</Label>
-                  <Input
-                    id="purchase_date"
-                    type="date"
-                    value={formData.purchase_date}
-                    onChange={(e) =>
-                      setFormData({ ...formData, purchase_date: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="employee_id">Employee</Label>
-                  <Select
-                    value={formData.employee_id}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, employee_id: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select employee" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {employees.map((employee) => (
-                        <SelectItem key={employee.id} value={employee.id}>
-                          {employee.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="card_id">Card</Label>
-                  <Select
-                    value={formData.card_id}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, card_id: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select card" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {cards.map((card) => (
-                        <SelectItem key={card.id} value={card.id}>
-                          **** {card.last_four}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="category_id">Category</Label>
-                  <Select
-                    value={formData.category_id}
-                    onValueChange={(value) =>
-                      setFormData({ ...formData, category_id: value })
-                    }
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select category" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="">None</SelectItem>
-                      {categories.map((category) => (
-                        <SelectItem key={category.id} value={category.id}>
-                          {category.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="col-span-2 space-y-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
-                    placeholder="Optional description"
-                    value={formData.description}
-                    onChange={(e) =>
-                      setFormData({ ...formData, description: e.target.value })
-                    }
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="submit">
-                  {isEditing ? 'Update' : 'Add'} Purchase
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter>
+                  <Button type="submit">
+                    {isEditing ? 'Update' : 'Add'} Purchase
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        </div>
       </div>
 
       {/* Advanced Filters */}
@@ -504,11 +563,45 @@ export default function PurchasesPage() {
         />
       </div>
 
+      {/* Selection Summary */}
+      {selectionMode && selectedPurchases.size > 0 && (
+        <div className="mb-4 rounded-lg border bg-blue-50 border-blue-200 p-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
+            <div className="flex items-center gap-4">
+              <span className="font-semibold text-blue-900">
+                {selectionSummary.count} {selectionSummary.count === 1 ? 'purchase' : 'purchases'} selected
+              </span>
+              <span className="text-blue-700">
+                Total: ${selectionSummary.total.toFixed(2)}
+              </span>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearSelection}
+              className="w-full sm:w-auto"
+            >
+              Clear Selection
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Purchases Table */}
       <div className="rounded-lg border bg-white">
         <Table>
           <TableHeader>
             <TableRow>
+              {selectionMode && (
+                <TableHead className="w-12">
+                  <input
+                    type="checkbox"
+                    checked={filteredPurchases.length > 0 && selectedPurchases.size === filteredPurchases.length}
+                    onChange={toggleSelectAll}
+                    className="h-4 w-4 rounded border-gray-300"
+                  />
+                </TableHead>
+              )}
               <TableHead>Date & Time</TableHead>
               <TableHead>Merchant</TableHead>
               <TableHead>Amount</TableHead>
@@ -522,13 +615,23 @@ export default function PurchasesPage() {
           <TableBody>
             {filteredPurchases.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={8} className="text-center text-gray-500">
+                <TableCell colSpan={selectionMode ? 9 : 8} className="text-center text-gray-500">
                   {purchases.length === 0 ? 'No purchases found' : 'No purchases match your filters'}
                 </TableCell>
               </TableRow>
             ) : (
               filteredPurchases.map((purchase) => (
                 <TableRow key={purchase.id}>
+                  {selectionMode && (
+                    <TableCell>
+                      <input
+                        type="checkbox"
+                        checked={selectedPurchases.has(purchase.id)}
+                        onChange={() => togglePurchaseSelection(purchase.id)}
+                        className="h-4 w-4 rounded border-gray-300"
+                      />
+                    </TableCell>
+                  )}
                   <TableCell>
                     {format(new Date(purchase.created_at), 'MMM dd, HH:mm')}
                   </TableCell>
