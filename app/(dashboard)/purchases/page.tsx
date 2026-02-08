@@ -62,6 +62,7 @@ export default function PurchasesPage() {
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(new Set())
+  const [autoSelectFromShift, setAutoSelectFromShift] = useState(false)
 
   // Bulk assign employee dialog
   const [bulkAssignDialogOpen, setBulkAssignDialogOpen] = useState(false)
@@ -174,6 +175,12 @@ export default function PurchasesPage() {
     const endDate = searchParams.get('endDate')
 
     if (cardId || employeeId || startDate || endDate) {
+      // Enable selection mode
+      setSelectionMode(true)
+      
+      // Set flag to auto-select after filters apply
+      setAutoSelectFromShift(true)
+      
       setFilters(prev => ({
         ...prev,
         cardIds: cardId ? [cardId] : [],
@@ -183,6 +190,14 @@ export default function PurchasesPage() {
       }))
     }
   }, [searchParams])
+
+  // Auto-select all filtered purchases when coming from shift
+  useEffect(() => {
+    if (autoSelectFromShift && filteredPurchases.length > 0) {
+      setSelectedPurchases(new Set(filteredPurchases.map(p => p.id)))
+      setAutoSelectFromShift(false) // Only run once
+    }
+  }, [autoSelectFromShift, filteredPurchases])
 
   const fetchPurchases = async () => {
     console.log("🔍 Fetching purchases for user:", user?.id)
