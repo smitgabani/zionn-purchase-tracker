@@ -70,10 +70,13 @@ export default function CardsPage() {
   }, [user])
 
   const fetchCards = async () => {
+    if (!user) return
+    
     try {
       const { data, error } = await supabase
         .from('cards')
         .select('*')
+        .eq('admin_user_id', user.id)
         .order('created_at', { ascending: false })
 
       if (error) throw error
