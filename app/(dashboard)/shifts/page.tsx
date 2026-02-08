@@ -32,9 +32,16 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Clock, Trash2, DollarSign, ShoppingCart, Plus, StopCircle } from 'lucide-react'
+import { Clock, Trash2, DollarSign, ShoppingCart, Plus, StopCircle, Download } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
+import { convertToCSV, downloadCSV, formatDateForExport, formatCurrencyForExport, calculateDurationForExport } from '@/lib/utils/export'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 
 interface CardShift {
   id: string
@@ -488,6 +495,83 @@ export default function ShiftsPage() {
     )
   }
 
+
+  const handleExportOngoingShifts = () => {
+    if (ongoingShifts.length === 0) {
+      toast.error('No ongoing shifts to export')
+      return
+    }
+    
+    const exportData = ongoingShifts.map(shift => {
+      const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
+      return {
+        'Card': getCardDisplay(shift),
+        'Bank': shift.cards.bank_name,
+        'Employee': shift.employees.name,
+        'Start Time': formatDateForExport(shift.start_time),
+        'End Time': 'Ongoing',
+        'Duration': calculateDurationForExport(shift.start_time, shift.end_time),
+        'Purchases': stats.count,
+        'Total Spending': formatCurrencyForExport(stats.total)
+      }
+    })
+    
+    const csv = convertToCSV(exportData, Object.keys(exportData[0]))
+    downloadCSV(csv, `ongoing-shifts-${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${ongoingShifts.length} ongoing shifts`)
+  }
+
+  const handleExportEndedShifts = () => {
+    if (endedShifts.length === 0) {
+      toast.error('No ended shifts to export')
+      return
+    }
+    
+    const exportData = endedShifts.map(shift => {
+      const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
+      return {
+        'Card': getCardDisplay(shift),
+        'Bank': shift.cards.bank_name,
+        'Employee': shift.employees.name,
+        'Start Time': formatDateForExport(shift.start_time),
+        'End Time': formatDateForExport(shift.end_time!),
+        'Duration': calculateDurationForExport(shift.start_time, shift.end_time),
+        'Purchases': stats.count,
+        'Total Spending': formatCurrencyForExport(stats.total)
+      }
+    })
+    
+    const csv = convertToCSV(exportData, Object.keys(exportData[0]))
+    downloadCSV(csv, `ended-shifts-${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${endedShifts.length} ended shifts`)
+  }
+
+  const handleExportAllShifts = () => {
+    if (shifts.length === 0) {
+      toast.error('No shifts to export')
+      return
+    }
+    
+    const exportData = shifts.map(shift => {
+      const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
+      return {
+        'Card': getCardDisplay(shift),
+        'Bank': shift.cards.bank_name,
+        'Employee': shift.employees.name,
+        'Start Time': formatDateForExport(shift.start_time),
+        'End Time': shift.end_time ? formatDateForExport(shift.end_time) : 'Ongoing',
+        'Duration': calculateDurationForExport(shift.start_time, shift.end_time),
+        'Status': shift.end_time ? 'Ended' : 'Active',
+        'Purchases': stats.count,
+        'Total Spending': formatCurrencyForExport(stats.total)
+      }
+    })
+    
+    const csv = convertToCSV(exportData, Object.keys(exportData[0]))
+    downloadCSV(csv, `all-shifts-${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${shifts.length} shifts`)
+  }
+
   return (
     <div>
       <div className="mb-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -497,6 +581,25 @@ export default function ShiftsPage() {
             Track card assignment history, shift durations, and spending. Click a shift to view purchases.
           </p>
         </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex-1 sm:flex-none">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={handleExportOngoingShifts}>
+                Export Ongoing Shifts ({ongoingShifts.length})
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportEndedShifts}>
+                Export Ended Shifts ({endedShifts.length})
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportAllShifts}>
+                Export All Shifts ({shifts.length})
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={handleOpenDialog}>
