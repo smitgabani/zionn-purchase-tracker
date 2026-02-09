@@ -1,593 +1,326 @@
-# PurchaseTracker - Project Context & Planning
+# PurchaseTracker - Project Context
 
 ## 🎯 Project Vision
 
-**PurchaseTracker** is a single-admin application designed to track employee purchases through automated bank transaction email parsing.
+**PurchaseTracker** is a single-admin application designed to track company card purchases through automated bank transaction email parsing.
 
 ### Core Concept
 
 - **Single Admin User** manages everything
 - **Employees** are data records (NOT user accounts with login)
-- **Cards** are assigned to employees
-- **Bank emails** are synced from Gmail
-- **Purchases** are automatically extracted from emails and linked to employees via cards
-- **Admin** reviews, categorizes, and analyzes all spending
+- **Cards** are assigned to employees and tracked through shifts
+- **Bank emails** are synced from Gmail and automatically parsed
+- **Purchases** are automatically extracted from emails
+- **Admin** reviews and analyzes all spending
 
-## 🏗️ Architecture Decisions
+## 🏗️ Current Architecture
 
-### 1. Single-Admin Model (Simplified)
-
-**Decision:** One admin user, employees are just data entries
-
-**Rationale:**
-- Simpler authentication (no multi-user complexity)
-- No role-based permissions needed
-- No employee data access controls
-- Admin has full visibility over all data
-- Employees never log in
-
-**Impact:**
+### Single-Admin Model
+- One admin user, employees are data entries only
 - All tables have `admin_user_id` foreign key
 - RLS policies scope everything to admin user
-- No employee authentication system needed
+- No employee authentication needed
 
-### 2. Card-Based Employee Linking
+### Card Shifts System
+- Track when cards are assigned to employees
+- Start/end times for each shift
+- Purchases linked to shifts by card + time range
+- Automatic employee association through active shifts
 
-**Decision:** Link purchases to employees via card assignments
-
-**Rationale:**
-- Bank emails typically include card last 4 digits
-- Parsing card number from email is reliable
-- One-to-one or one-to-many (shared cards) mapping
-- Automatic employee assignment without manual intervention
-
-**Flow:**
-```
-Email contains: Card ending 1234
-↓
-System finds: Card 1234 assigned to John Smith
-↓
-Purchase auto-linked to John Smith
-```
-
-### 3. Database Design
-
-**Decision:** Normalized relational schema with PostgreSQL
-
-**Key Tables:**
-- `employees` - Employee records
-- `cards` - Company cards with employee assignments
-- `categories` - Purchase categories (color-coded)
-- `purchases` - Transaction records
-- `parsing_rules` - Email parsing configurations
-- `raw_emails` - Synced Gmail messages
-- `gmail_sync_state` - OAuth tokens and sync status
-
-**RLS Policies:**
-- All tables filtered by `admin_user_id`
-- Server-side enforcement via Supabase
-
-### 4. Email Processing Pipeline
-
-**Decision:** Two-stage processing (sync → parse)
+### Email Processing Pipeline
 
 **Stage 1: Email Sync**
 - Fetch emails from Gmail via OAuth
-- Store raw emails in `raw_emails` table
-- No processing, just storage
+- Store raw emails with full HTML content
+- Track sync history and status
 
 **Stage 2: Parsing**
-- Apply parsing rules to extract data
-- Match patterns (regex) for amount, merchant, date, card
-- Create `purchases` records
-- Link to employee via card
+- Apply regex-based parsing rules
+- Extract: amount, merchant, date, card number
+- Create purchases automatically
+- Handle timezone-aware timestamps (UTC storage)
 
-**Rationale:**
-- Separation of concerns
-- Can re-parse emails if rules change
-- Keeps raw data for debugging
-- Allows manual intervention
+## 🗄️ Database Schema
 
-### 5. Tech Stack Choices
+### Core Tables
 
-| Technology | Choice | Rationale |
-|------------|--------|-----------|
-| Framework | Next.js 16 App Router | Modern, SSR, API routes built-in |
-| Language | TypeScript | Type safety, better DX |
-| Database | Supabase (PostgreSQL) | Managed, RLS, realtime, auth built-in |
-| Auth | Supabase Auth + Google OAuth | Unified auth, OAuth for Gmail |
-| Styling | Tailwind CSS v4 | Utility-first, fast, customizable |
-| UI Components | shadcn/ui | Copy-paste, customizable, Radix UI |
-| State Management | Redux Toolkit | Centralized state, dev tools |
-| Email API | Google Gmail API | Official, well-documented |
-| Icons | Lucide React | Modern, consistent |
-| Dates | date-fns | Lightweight, tree-shakeable |
+**employees**
+- Employee records (name only, no email/department)
+- Linked to cards through card_shifts
 
-## 📋 Implementation Phases
+**cards**
+- Company cards with last 4 digits
+- Bank name, nickname, type
+- Active/inactive status
+- Unassigned to specific employees (shifts handle assignment)
 
-### ✅ Phase 1: Foundation (COMPLETE)
-- [x] Next.js project setup
-- [x] Tailwind CSS + shadcn/ui
-- [x] Supabase configuration
-- [x] Redux store setup
-- [x] Database schema & migrations
-- [x] Environment variables
+**card_shifts**
+- Tracks card assignment history
+- start_time, end_time (nullable for ongoing)
+- Links card → employee for time periods
+- Used to calculate shift statistics
 
-### ✅ Phase 2: Core CRUD (COMPLETE)
-- [x] Admin authentication (signup/login/logout)
-- [x] Protected routes
-- [x] Employees CRUD
-- [x] Cards CRUD with employee assignment
-- [x] Categories CRUD (9 default categories)
-- [x] Purchases CRUD (manual entry)
-- [x] Dashboard layout & navigation
+**purchases**
+- Transaction records
+- `purchase_date` (TIMESTAMPTZ) - actual transaction time
+- `order_number` (VARCHAR(6)) - optional tracking number
+- `reviewed_by_initials` (VARCHAR(10)) - reviewer initials instead of boolean
+- Links to card, employee (via shifts)
+- Auto-created from parsed emails
 
-### ✅ Phase 3: Gmail Integration (COMPLETE)
-- [x] Google OAuth setup
-- [x] Gmail API service layer
-- [x] OAuth authorization flow
-- [x] Token management & auto-refresh
-- [x] Gmail labels fetching
-- [x] Email sync functionality
-- [x] Sync history tracking
-- [x] Gmail Settings UI
+**parsing_rules**
+- Regex patterns for email parsing
+- Match criteria (sender, subject, body)
+- Extraction patterns (amount, merchant, card, date)
+- Priority system for rule ordering
+- Active/inactive status
 
-### 🚧 Phase 4: Email Parsing (NEXT)
-- [ ] Parsing rules CRUD UI
-- [ ] Rule priority system
-- [ ] Pattern matching (sender, subject, body)
-- [ ] Data extraction (amount, merchant, date, card)
-- [ ] Regex pattern tester
-- [ ] Parser engine implementation
-- [ ] Auto-parse on email sync
-- [ ] Error handling & logging
-- [ ] Manual re-parse functionality
+**raw_emails**
+- Synced Gmail messages
+- Full HTML body preserved
+- Parsing status and errors
+- Gmail message ID for deduplication
 
-### ⏳ Phase 5: Dashboard Analytics (FUTURE)
-- [ ] Overview metrics (total spent, # purchases)
-- [ ] Spending by employee (pie chart)
-- [ ] Spending by category (bar chart)
-- [ ] Spending trends over time (line chart)
-- [ ] Recent purchases widget
-- [ ] Top merchants
-- [ ] Budget vs actual
-- [ ] Date range filters
+## 📊 Key Features Implemented
 
-### ⏳ Phase 6: Advanced Features (FUTURE)
-- [ ] Advanced filtering (multi-select)
-- [ ] Search functionality (fuzzy search)
-- [ ] Bulk operations (bulk categorize, bulk review)
-- [ ] Export to CSV/Excel
-- [ ] Purchase receipts/attachments
-- [ ] Budget tracking per employee/category
-- [ ] Email notifications/alerts
-- [ ] Scheduled email sync (cron jobs)
-- [ ] Gmail webhook push notifications
-- [ ] Audit log/activity history
+### ✅ Phase 1-4: Complete
+- Admin authentication with Google OAuth
+- Full CRUD: Employees, Cards, Categories, Purchases
+- Gmail integration with auto-sync
+- Card shifts tracking with start/end times
+- Email parsing engine with regex rules
+- Automatic purchase creation from emails
+- Parsing Rules management UI
+- Developer Tools for debugging
 
-## 🎨 Design Patterns
+### Current Functionality
 
-### 1. Data Flow Pattern
+**Purchases Page**
+- Sortable table by purchase_date
+- Inline editable order numbers (6 digits)
+- Inline editable initials (10 chars max)
+- Card filter, date range filter
+- Source filter (Email/Manual)
+- Reviewed status filter (based on initials presence)
+- CSV export functionality
+- No employee or source columns
 
-```
-User Action
-    ↓
-React Component (UI)
-    ↓
-Redux Action Dispatch
-    ↓
-Supabase Client (API call)
-    ↓
-Database (PostgreSQL with RLS)
-    ↓
-Response
-    ↓
-Redux State Update
-    ↓
-Component Re-render
-```
+**Shifts Page**
+- Track card assignments to employees
+- Calculate purchases and spending per shift
+- Click shift to filter purchases
+- Ongoing shifts show current totals
+- Duration tracking
 
-### 2. Authentication Pattern
+**Parsing Rules Page**
+- Create/edit/delete parsing rules
+- Test rules with sample text
+- Priority ordering
+- Card extraction patterns for various formats
 
-```
-User Login
-    ↓
-Supabase Auth
-    ↓
-Session Cookie (httpOnly)
-    ↓
-Middleware validates session
-    ↓
-Protected routes accessible
-```
+**Tools Page**
+- Quick Parse (normal operation)
+- Smart Full Parse (re-parse orphaned emails)
+- Full Re-parse with duplicate checking
+- Gmail sync
+- Reset emails
+- Parse status dashboard
+- Integrity check
+- Test card extraction
+- Delete all purchases
 
-### 3. Gmail Sync Pattern
+**Emails Page**
+- View synced emails
+- Parse status indicators
+- Email details modal
+- Parsed/Unparsed/Failed counts
 
-```
-User clicks "Sync Now"
-    ↓
-Check token expiry
-    ↓
-Refresh if needed
-    ↓
-Fetch emails from Gmail API
-    ↓
-Check if email already exists (gmail_message_id)
-    ↓
-Store new emails in raw_emails
-    ↓
-Update last_sync_at
-    ↓
-Return count of synced emails
-```
+## 🔧 Technical Details
 
-### 4. Purchase Creation Pattern
+### Tech Stack
+| Technology | Version | Purpose |
+|------------|---------|---------|
+| Next.js | 16.1.6 | Framework with App Router |
+| React | 19.2.3 | UI library |
+| TypeScript | Latest | Type safety |
+| Supabase | Latest | PostgreSQL + Auth + RLS |
+| Tailwind CSS | v4 | Styling |
+| shadcn/ui | Latest | UI components |
+| Redux Toolkit | Latest | State management |
+| date-fns | 4.1.0 | Date formatting |
+| Lucide React | Latest | Icons |
 
-**Manual:**
-```
-User fills form
-    ↓
-Select card → auto-populate employee
-    ↓
-Submit
-    ↓
-Insert into purchases table
-    ↓
-Redux state update
-    ↓
-Table re-renders
-```
+### Important Patterns
 
-**Automated (Future):**
-```
-Email synced
-    ↓
-Match parsing rule
-    ↓
-Extract: amount, merchant, date, card last 4
-    ↓
-Find card by last 4 digits
-    ↓
-Get employee from card assignment
-    ↓
-Create purchase record
-    ↓
-Mark email as parsed
-```
+**Date Handling**
+- Database stores TIMESTAMPTZ (UTC)
+- `parseUTCDate()` utility appends 'Z' to force UTC interpretation
+- Prevents timezone display bugs
+- Purchase dates use email received_at if extraction fails
 
-## 🗄️ Database Schema Details
+**Card Number Extraction**
+- Handles multiple formats: `4537*****798****` or `**** 0798`
+- Regex: `(\d{4})\*+\*{4}|\*{4}\s*(\d{4})`
+- Pads 3-digit cards to 4 digits (e.g., `798` → `0798`)
 
-### Key Relationships
+**Shift Statistics**
+- Filter purchases by card_id only (no employee_id check)
+- Use purchase_date for time comparison
+- Ongoing shifts use current time as end_time
+
+## 🗂️ File Structure
 
 ```
-auth.users (1)
-    ↓
-    └── admin_user_id (FK on all tables)
-        ├── employees (many)
-        │   └── id ←── cards.employee_id (FK)
-        ├── cards (many)
-        │   └── id ←── purchases.card_id (FK)
-        ├── categories (many)
-        │   └── id ←── purchases.category_id (FK)
-        ├── purchases (many)
-        │   └── employee_id (auto from card)
-        ├── raw_emails (many)
-        ├── parsing_rules (many)
-        └── gmail_sync_state (one)
+app/
+  (dashboard)/
+    purchases/page.tsx - Main purchases table
+    shifts/page.tsx - Card shift tracking
+    employees/page.tsx - Employee management
+    cards/page.tsx - Card management
+    emails/page.tsx - Email viewing
+    parsing-rules/page.tsx - Parsing rules CRUD
+    tools/page.tsx - Developer tools
+  api/
+    parser/ - Email parsing endpoints
+    gmail/ - Gmail sync endpoints
+    debug/ - Debugging tools endpoints
+
+components/
+  purchases/PurchaseFilters.tsx - Advanced filtering
+  Sidebar.tsx - Navigation
+
+lib/
+  parser/engine.ts - Email parsing logic
+  gmail/service.ts - Gmail API wrapper
+  utils/date.ts - parseUTCDate utility
+  supabase/ - Client & server instances
+  store/ - Redux slices
+
+supabase/migrations/
+  20260207_initial_schema.sql - Base schema
+  20260208_add_time_support.sql - TIMESTAMPTZ migration
+  20260208_card_shifts.sql - Shifts table
+  20260209_add_order_number.sql - Order number field
+  20260209_add_initials_field.sql - Replace is_reviewed with initials
 ```
 
-### Indexes for Performance
-
-```sql
--- Frequently queried columns
-idx_employees_admin_user_id
-idx_cards_admin_user_id
-idx_cards_employee_id
-idx_cards_last_four
-idx_purchases_admin_user_id
-idx_purchases_card_id
-idx_purchases_category_id
-idx_purchases_employee_id
-idx_purchases_date
-idx_raw_emails_gmail_id
-idx_raw_emails_parsed
-```
-
-### Triggers
-
-```sql
--- Auto-update updated_at timestamp
-update_employees_updated_at
-update_cards_updated_at
-update_categories_updated_at
-update_purchases_updated_at
-update_parsing_rules_updated_at
-update_gmail_sync_state_updated_at
-```
-
-## 🔐 Security Considerations
+## 🔐 Security
 
 ### Authentication
-- Supabase Auth handles session management
-- Server-side session validation via middleware
-- Protected routes check auth status
-- Tokens stored in httpOnly cookies
+- Supabase Auth with Google OAuth
+- Server-side session validation
+- Protected routes via middleware
+- HttpOnly cookies
 
 ### Authorization
 - Row Level Security (RLS) on all tables
 - All queries filtered by `auth.uid() = admin_user_id`
-- No direct database access from client
-- Server-side validation in API routes
+- No cross-admin data access
 
 ### Gmail OAuth
-- Minimal scopes requested (gmail.readonly, gmail.labels)
-- Tokens encrypted at rest in Supabase
-- Refresh tokens used to maintain access
-- User can disconnect anytime
-- Tokens deleted on disconnect
+- Minimal scopes (gmail.readonly, gmail.labels)
+- Tokens encrypted in Supabase
+- Auto-refresh on expiry
+- Disconnectable anytime
 
-### Data Privacy
-- Admin can only see their own data
-- No cross-admin data leakage
-- Emails stored per-admin
-- No PII shared with third parties
+## 📈 Data Flow
 
-## 📊 Data Models
-
-### Employee
-```typescript
-{
-  id: UUID
-  admin_user_id: UUID
-  name: string
-  email?: string
-  department?: string
-  notes?: string
-  is_active: boolean
-  created_at: timestamp
-  updated_at: timestamp
-}
+### Email Sync → Parse → Purchase
+```
+1. User clicks "Sync Gmail"
+2. Fetch emails from Gmail API
+3. Store in raw_emails (dedupe by gmail_message_id)
+4. Auto-parse with active parsing rules
+5. Extract: amount, merchant, card, date
+6. Find card by last_four match
+7. Create purchase record
+8. Mark email as parsed
 ```
 
-### Card
-```typescript
-{
-  id: UUID
-  admin_user_id: UUID
-  last_four: string (4 digits)
-  bank_name: string
-  card_type?: 'visa' | 'mastercard' | 'amex' | 'other'
-  nickname?: string
-  employee_id?: UUID (FK to employees)
-  is_shared: boolean
-  is_active: boolean
-  created_at: timestamp
-  updated_at: timestamp
-}
+### Shift-Based Filtering
+```
+1. User clicks shift row
+2. Navigate to purchases with filters:
+   - cardId (UUID)
+   - startDate (ISO timestamp)
+   - endDate (ISO timestamp or null)
+3. Auto-enable selection mode
+4. Filter purchases by card + date range
+5. Auto-select matching purchases
 ```
 
-### Purchase
-```typescript
-{
-  id: UUID
-  admin_user_id: UUID
-  amount: decimal(12,2)
-  currency: string (default 'CAD')
-  merchant?: string
-  description?: string
-  purchase_date: date
-  card_id?: UUID (FK to cards)
-  category_id?: UUID (FK to categories)
-  employee_id?: UUID (FK to employees, auto from card)
-  raw_email_id?: UUID (FK to raw_emails)
-  source: 'email' | 'manual'
-  notes?: string
-  is_reviewed: boolean
-  created_at: timestamp
-  updated_at: timestamp
-}
+## 🚀 Deployment
+
+### Environment Variables Required
+```
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_ANON_KEY=
+SUPABASE_SERVICE_ROLE_KEY=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REDIRECT_URI=
 ```
 
-### Parsing Rule (Future)
-```typescript
-{
-  id: UUID
-  admin_user_id: UUID
-  name: string
-  description?: string
-  is_active: boolean
-  priority: number (for rule ordering)
-  
-  // Matching criteria (regex patterns)
-  sender_pattern?: string
-  subject_pattern?: string
-  body_pattern?: string
-  
-  // Extraction patterns (regex with capture groups)
-  amount_pattern: string (required)
-  merchant_pattern?: string
-  date_pattern?: string
-  card_last_four_pattern?: string
-  
-  date_format: string (default 'MMM dd, yyyy')
-  created_at: timestamp
-  updated_at: timestamp
-}
-```
+### Build Status
+✅ Production build passes
+✅ TypeScript strict mode
+✅ All type errors resolved
+✅ No runtime errors
 
-## 🎯 Current State
+## 🔄 Recent Major Changes
 
-### What's Working
-- ✅ Admin authentication & session management
-- ✅ Full CRUD for Employees, Cards, Categories, Purchases
-- ✅ Auto-link purchases to employees via card selection
-- ✅ Gmail OAuth connection
-- ✅ Email syncing from Gmail
-- ✅ Token refresh on expiry
-- ✅ Responsive UI with error handling
+### Feb 8-9, 2026
+- ✅ Removed employee column from purchases table
+- ✅ Removed source column from purchases table
+- ✅ Added order_number field (6 digits)
+- ✅ Replaced is_reviewed checkbox with reviewed_by_initials input
+- ✅ Fixed purchase sorting to use purchase_date
+- ✅ Fixed timezone display bugs with parseUTCDate()
+- ✅ Fixed shift statistics to work without employee_id matching
+- ✅ Updated card extraction regex for multiple formats
+- ✅ Added Test Card Extraction debug tool
+- ✅ Removed employeeIds from shift navigation
 
-### What's Next
-- 🚧 Parsing rules CRUD UI
-- 🚧 Regex pattern tester
-- 🚧 Parser engine to extract data from emails
-- 🚧 Auto-create purchases from parsed emails
-- 🚧 Dashboard analytics with charts
+## 📝 Known Behaviors
 
-### Known Limitations
-- Manual sync only (no scheduled/automatic sync yet)
-- No email parsing yet (raw emails stored but not processed)
-- No analytics dashboard (placeholder only)
-- No export functionality
-- No bulk operations
+### Parsing
+- Emails without card numbers in body won't link to cards
+- Parse errors stored in raw_emails.parse_error
+- Orphaned emails (parsed but no purchase) can be re-parsed
+- Duplicate detection uses raw_email_id
 
-## 🔮 Future Enhancements
+### Shifts
+- Multiple employees can use same card (overlaps possible)
+- Ongoing shifts calculate stats in real-time
+- Shift stats match by card + time range only
 
-### Short-term (Next Sprint)
-1. **Email Parsing Engine**
-   - Regex-based pattern matching
-   - Configurable parsing rules
-   - Test interface for rules
-   - Auto-parse on sync
+### Filters
+- Date filters use purchase_date (transaction time)
+- Reviewed filter checks for non-empty initials
+- Card filter allows multiple selection
 
-2. **Dashboard Analytics**
-   - Spending overview
-   - Charts (Recharts)
-   - Date range filters
+## 🎯 Future Considerations
+
+### Short-term
+- Scheduled auto-sync (cron job)
+- Dashboard analytics with charts
+- Receipt attachments
+- Budget tracking
 
 ### Medium-term
-3. **Scheduled Sync**
-   - Cron job for hourly/daily sync
-   - Vercel Cron integration
-
-4. **Advanced Filtering**
-   - Multi-select filters
-   - Date range picker
-   - Search across all fields
-
-5. **Export Functionality**
-   - CSV export
-   - Excel export
-   - PDF reports
+- Gmail webhook push notifications
+- Multi-currency support
+- Advanced search/filtering
+- Bulk operations
 
 ### Long-term
-6. **Webhooks & Real-time**
-   - Gmail push notifications
-   - Real-time sync on new emails
-   - WebSocket updates for UI
-
-7. **Budget Management**
-   - Set budgets per employee/category
-   - Budget alerts
-   - Forecast spending
-
-8. **Attachments & Receipts**
-   - Upload receipt images
-   - Link to email attachments
-   - OCR for receipt data
-
-9. **Multi-currency**
-   - Support multiple currencies
-   - Exchange rate conversion
-   - Currency selector per purchase
-
-10. **Audit & Compliance**
-    - Activity log
-    - Change history
-    - Compliance reports
-
-## 🧪 Testing Strategy
-
-### Manual Testing (Current)
-- Feature testing after each implementation
-- User flow testing
-- Edge case testing
-
-### Automated Testing (Future)
-- Unit tests (Jest)
-- Integration tests (Playwright)
-- E2E tests
-- API tests
-
-## 📈 Performance Considerations
-
-### Current Optimizations
-- Indexed database queries
-- Redux for client-side caching
-- Server-side rendering for initial load
-
-### Future Optimizations
-- Pagination for large datasets
-- Virtual scrolling for tables
-- Lazy loading of components
-- Incremental email sync (only new emails)
-- Database query optimization
-
-## 🛠️ Development Workflow
-
-### Code Organization
-```
-- Components: Reusable UI components
-- Pages: Route-based page components
-- API Routes: Server-side endpoints
-- Services: Business logic (Gmail, parsing)
-- Store: Redux slices for state management
-- Types: TypeScript definitions
-- Utils: Helper functions
-```
-
-### Naming Conventions
-- Files: `kebab-case.tsx`
-- Components: `PascalCase`
-- Functions: `camelCase`
-- Types: `PascalCase`
-- Database tables: `snake_case`
-
-### Git Workflow (Recommended)
-- `main` - Production-ready code
-- `develop` - Integration branch
-- `feature/*` - New features
-- `fix/*` - Bug fixes
-
-## 📝 TODOs & Backlog
-
-### High Priority
-- [ ] Implement parsing rules CRUD
-- [ ] Build regex pattern tester
-- [ ] Create parser engine
-- [ ] Add dashboard analytics
-
-### Medium Priority
-- [ ] Add scheduled email sync
-- [ ] Implement export functionality
-- [ ] Add bulk operations
-- [ ] Create advanced filters
-
-### Low Priority
-- [ ] Add attachment support
-- [ ] Implement webhooks
-- [ ] Multi-currency support
-- [ ] Audit logging
-
-### Technical Debt
-- [ ] Add comprehensive error boundaries
-- [ ] Improve loading states (skeletons)
-- [ ] Add form validation with Zod
-- [ ] Optimize table rendering for large datasets
-- [ ] Add unit tests
-- [ ] Improve accessibility (ARIA labels)
-
-## 🎓 Learning Resources
-
-### Technologies Used
-- [Next.js Documentation](https://nextjs.org/docs)
-- [Supabase Documentation](https://supabase.com/docs)
-- [Tailwind CSS](https://tailwindcss.com/docs)
-- [shadcn/ui](https://ui.shadcn.com/)
-- [Redux Toolkit](https://redux-toolkit.js.org/)
-- [Gmail API](https://developers.google.com/gmail/api)
+- Mobile app
+- Audit logging
+- Compliance reports
+- OCR for receipts
 
 ---
 
-**Last Updated:** Feb 7, 2026
-**Current Phase:** Phase 3 Complete, Phase 4 (Email Parsing) Next
+**Last Updated:** Feb 9, 2026
+**Current Status:** ✅ Fully Functional
 **Build Status:** ✅ Production Ready

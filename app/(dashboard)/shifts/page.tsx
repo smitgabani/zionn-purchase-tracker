@@ -32,7 +32,7 @@ import {
   DialogTrigger,
   DialogFooter,
 } from '@/components/ui/dialog'
-import { Clock, Trash2, DollarSign, ShoppingCart, Plus, StopCircle, Download } from 'lucide-react'
+import { Clock, Trash2, DollarSign, ShoppingCart, Plus, StopCircle, Download, Search, X } from 'lucide-react'
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { convertToCSV, downloadCSV, formatDateForExport, formatCurrencyForExport, calculateDurationForExport } from '@/lib/utils/export'
@@ -49,6 +49,7 @@ interface CardShift {
   employee_id: string
   start_time: string
   end_time: string | null
+  shift_id: string | null
   created_at: string
   cards: {
     last_four: string
@@ -89,7 +90,7 @@ export default function ShiftsPage() {
   const [cards, setCards] = useState<Card[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
-  
+
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [formData, setFormData] = useState({
@@ -101,16 +102,33 @@ export default function ShiftsPage() {
     end_time: '',
   })
 
+  // Filter state for ended shifts
+  const [showOnlyNoId, setShowOnlyNoId] = useState(false)
+  const [shiftIdSearch, setShiftIdSearch] = useState('')
+
   // Separate ongoing and ended shifts
-  const ongoingShifts = useMemo(() => 
+  const ongoingShifts = useMemo(() =>
     shifts.filter(s => !s.end_time),
     [shifts]
   )
 
-  const endedShifts = useMemo(() => 
-    shifts.filter(s => s.end_time),
-    [shifts]
-  )
+  const endedShifts = useMemo(() => {
+    let filtered = shifts.filter(s => s.end_time)
+
+    // Filter by "No ID" checkbox
+    if (showOnlyNoId) {
+      filtered = filtered.filter(s => !s.shift_id || s.shift_id.trim() === '')
+    }
+
+    // Filter by shift ID search
+    if (shiftIdSearch.trim()) {
+      filtered = filtered.filter(s =>
+        s.shift_id && s.shift_id.toLowerCase().includes(shiftIdSearch.toLowerCase())
+      )
+    }
+
+    return filtered
+  }, [shifts, showOnlyNoId, shiftIdSearch])
 
   useEffect(() => {
     if (user) {
@@ -361,7 +379,7 @@ export default function ShiftsPage() {
   const handleDelete = async (shiftId: string, e: React.MouseEvent) => {
     // Stop propagation to prevent row click
     e.stopPropagation()
-    
+
     if (!confirm('Are you sure you want to delete this shift?')) return
 
     try {
@@ -371,13 +389,39 @@ export default function ShiftsPage() {
         .eq('id', shiftId)
 
       if (error) throw error
-      
+
       // Remove from local state
       setShifts(shifts.filter(s => s.id !== shiftId))
       toast.success('Shift deleted successfully')
     } catch (error: any) {
       console.error('Error deleting shift:', error)
       toast.error('Failed to delete shift')
+    }
+  }
+
+  const handleShiftIdChange = async (shiftId: string, newShiftId: string) => {
+    // Sanitize: max 10 characters, alphanumeric
+    const sanitized = newShiftId.slice(0, 10)
+
+    try {
+      const { data, error } = await supabase
+        .from('card_shifts')
+        .update({ shift_id: sanitized || null })
+        .eq('id', shiftId)
+        .select(`
+          *,
+          cards(last_four, nickname, bank_name),
+          employees(name)
+        `)
+        .single()
+
+      if (error) throw error
+
+      // Update local state
+      setShifts(shifts.map(s => s.id === shiftId ? data : s))
+    } catch (error: any) {
+      console.error('Error updating shift ID:', error)
+      toast.error('Failed to update shift ID')
     }
   }
 
@@ -406,11 +450,26 @@ export default function ShiftsPage() {
     const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
     
     return (
-      <TableRow 
+      <TableRow
         key={shift.id}
         onClick={() => handleShiftClick(shift)}
         className="cursor-pointer hover:bg-gray-50 transition-colors"
       >
+        <TableCell>
+          {shift.end_time ? (
+            <Input
+              type="text"
+              value={shift.shift_id || ''}
+              onChange={(e) => handleShiftIdChange(shift.id, e.target.value)}
+              onClick={(e) => e.stopPropagation()}
+              maxLength={10}
+              placeholder="Enter ID"
+              className="h-8 w-28 text-sm"
+            />
+          ) : (
+            <span className="text-xs text-gray-400">-</span>
+          )}
+        </TableCell>
         <TableCell className="font-medium">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-gray-400 flex-shrink-0" />
@@ -748,6 +807,7 @@ export default function ShiftsPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Shift ID</TableHead>
                       <TableHead>Card</TableHead>
                       <TableHead>Employee</TableHead>
                       <TableHead>Start Time</TableHead>
@@ -770,14 +830,58 @@ export default function ShiftsPage() {
           {/* Ended Shifts */}
           {endedShifts.length > 0 && (
             <div>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                <Badge variant="secondary">{endedShifts.length}</Badge>
-                Ended Shifts
-              </h2>
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                  <Badge variant="secondary">{endedShifts.length}</Badge>
+                  Ended Shifts
+                </h2>
+
+                {/* Filters for Ended Shifts */}
+                <div className="flex items-center gap-4">
+                  {/* Checkbox: Show only shifts with no ID */}
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      id="show-no-id"
+                      checked={showOnlyNoId}
+                      onChange={(e) => setShowOnlyNoId(e.target.checked)}
+                      className="h-4 w-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900 cursor-pointer"
+                    />
+                    <Label
+                      htmlFor="show-no-id"
+                      className="text-sm font-medium cursor-pointer"
+                    >
+                      No ID only
+                    </Label>
+                  </div>
+
+                  {/* Search by Shift ID */}
+                  <div className="relative">
+                    <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" />
+                    <Input
+                      type="text"
+                      placeholder="Search by Shift ID"
+                      value={shiftIdSearch}
+                      onChange={(e) => setShiftIdSearch(e.target.value)}
+                      className="pl-8 pr-8 w-60 h-9"
+                    />
+                    {shiftIdSearch && (
+                      <button
+                        onClick={() => setShiftIdSearch('')}
+                        className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+
               <div className="rounded-lg border bg-white overflow-x-auto">
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead>Shift ID</TableHead>
                       <TableHead>Card</TableHead>
                       <TableHead>Employee</TableHead>
                       <TableHead>Start Time</TableHead>

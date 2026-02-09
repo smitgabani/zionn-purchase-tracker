@@ -135,6 +135,24 @@ export async function POST(request: NextRequest) {
             continue
           }
 
+          // Find card by last 4 digits (if provided)
+          let cardId: string | null = null
+          let employeeId: string | null = null
+
+          if (parseResult.data.card_last_four) {
+            const { data: card } = await supabase
+              .from('cards')
+              .select('id, employee_id')
+              .eq('last_four', parseResult.data.card_last_four)
+              .eq('is_active', true)
+              .single()
+
+            if (card) {
+              cardId = card.id
+              employeeId = card.employee_id
+            }
+          }
+
           // Create purchase from parsed data
           const { error: purchaseError } = await supabase
             .from('purchases')
@@ -146,8 +164,8 @@ export async function POST(request: NextRequest) {
               raw_email_id: rawEmail.id,
               source: 'email',
               description: messageDetails.subject,
-              card_id: null,
-              employee_id: null,
+              card_id: cardId,
+              employee_id: employeeId,
             })
 
           if (purchaseError) {

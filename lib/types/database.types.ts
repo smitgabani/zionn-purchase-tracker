@@ -273,6 +273,38 @@ export interface Database {
           updated_at?: string
         }
       }
+      card_shifts: {
+        Row: {
+          id: string
+          admin_user_id: string
+          card_id: string
+          employee_id: string
+          start_time: string
+          end_time: string | null
+          shift_id: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          admin_user_id: string
+          card_id: string
+          employee_id: string
+          start_time: string
+          end_time?: string | null
+          shift_id?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          admin_user_id?: string
+          card_id?: string
+          employee_id?: string
+          start_time?: string
+          end_time?: string | null
+          shift_id?: string | null
+          created_at?: string
+        }
+      }
       gmail_sync_state: {
         Row: {
           id: string
