@@ -115,6 +115,32 @@ export async function GET(request: NextRequest) {
             const parseResult = parser.parse(rawEmail)
 
             if (parseResult.success && parseResult.data) {
+              // Determine purchase date/time with fallback logic
+              let purchaseDate: string | null = null
+
+              if (parseResult.data.purchase_date) {
+                // First priority: Use extracted date from email body (YYYY-MM-DD)
+                // Note: We only extract date, not time, to avoid timezone issues
+                purchaseDate = parseResult.data.purchase_date
+              } else if (rawEmail.received_at) {
+                // Second priority: Use email's received_at timestamp (full ISO timestamp)
+                // This gives us accurate date AND time from when the email was received
+                purchaseDate = rawEmail.received_at
+              }
+
+              // If no date available, mark as unparsed with error
+              if (!purchaseDate) {
+                await supabase
+                  .from('raw_emails')
+                  .update({
+                    parsed: false,
+                    parse_error: 'Cannot determine purchase date: no date in email and no received_at timestamp',
+                  })
+                  .eq('id', rawEmail.id)
+                userFailed++
+                continue
+              }
+
               // Create purchase
               const { error: purchaseError } = await supabase
                 .from('purchases')
@@ -122,7 +148,7 @@ export async function GET(request: NextRequest) {
                   admin_user_id: syncState.admin_user_id,
                   amount: parseResult.data.amount,
                   merchant: parseResult.data.merchant,
-                  purchase_date: parseResult.data.purchase_date || new Date().toISOString().split('T')[0],
+                  purchase_date: purchaseDate,
                   raw_email_id: rawEmail.id,
                   source: 'email',
                   description: messageDetails.subject,

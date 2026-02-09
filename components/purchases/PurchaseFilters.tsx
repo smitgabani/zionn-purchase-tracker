@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
-import { Filter, X, Calendar, DollarSign, Users, CreditCard, Mail, Search, Clock } from 'lucide-react'
+import { Filter, X, Calendar, DollarSign, CreditCard, Mail, Search, Clock } from 'lucide-react'
 import { format } from 'date-fns'
 
 export interface PurchaseFilterValues {
@@ -14,7 +14,6 @@ export interface PurchaseFilterValues {
   endDate: Date | null
   minAmount: number | null
   maxAmount: number | null
-  employeeIds: string[]
   cardIds: string[]
   source: 'email' | 'manual' | null
   reviewedStatus: boolean | null
@@ -24,11 +23,10 @@ export interface PurchaseFilterValues {
 interface PurchaseFiltersProps {
   filters: PurchaseFilterValues
   onFilterChange: (filters: PurchaseFilterValues) => void
-  employees: Array<{ id: string; name: string }>
   cards: Array<{ id: string; last_four: string }>
 }
 
-export function PurchaseFilters({ filters, onFilterChange, employees, cards }: PurchaseFiltersProps) {
+export function PurchaseFilters({ filters, onFilterChange, cards }: PurchaseFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const updateFilter = <K extends keyof PurchaseFilterValues>(
@@ -44,7 +42,6 @@ export function PurchaseFilters({ filters, onFilterChange, employees, cards }: P
       endDate: null,
       minAmount: null,
       maxAmount: null,
-      employeeIds: [],
       cardIds: [],
       source: null,
       reviewedStatus: null,
@@ -58,19 +55,11 @@ export function PurchaseFilters({ filters, onFilterChange, employees, cards }: P
     if (filters.endDate) count++
     if (filters.minAmount !== null) count++
     if (filters.maxAmount !== null) count++
-    if (filters.employeeIds.length > 0) count++
     if (filters.cardIds.length > 0) count++
     if (filters.source !== null) count++
     if (filters.reviewedStatus !== null) count++
     if (filters.searchQuery) count++
     return count
-  }
-
-  const toggleEmployee = (employeeId: string) => {
-    const newIds = filters.employeeIds.includes(employeeId)
-      ? filters.employeeIds.filter(id => id !== employeeId)
-      : [...filters.employeeIds, employeeId]
-    updateFilter('employeeIds', newIds)
   }
 
   const toggleCard = (cardId: string) => {
@@ -193,31 +182,6 @@ export function PurchaseFilters({ filters, onFilterChange, employees, cards }: P
                 value={filters.maxAmount ?? ''}
                 onChange={(e) => updateFilter('maxAmount', e.target.value ? parseFloat(e.target.value) : null)}
               />
-            </div>
-          </div>
-
-          {/* Employees */}
-          <div className="space-y-2">
-            <Label className="flex items-center gap-2">
-              <Users className="h-4 w-4" />
-              Employees
-            </Label>
-            <div className="space-y-1 max-h-32 overflow-y-auto border rounded-md p-2">
-              {employees.length === 0 ? (
-                <p className="text-sm text-gray-500">No employees</p>
-              ) : (
-                employees.map(employee => (
-                  <label key={employee.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
-                    <input
-                      type="checkbox"
-                      checked={filters.employeeIds.includes(employee.id)}
-                      onChange={() => toggleEmployee(employee.id)}
-                      className="rounded"
-                    />
-                    <span className="text-sm">{employee.name}</span>
-                  </label>
-                ))
-              )}
             </div>
           </div>
 
@@ -358,15 +322,6 @@ export function PurchaseFilters({ filters, onFilterChange, employees, cards }: P
               <X
                 className="h-3 w-3 cursor-pointer"
                 onClick={() => updateFilter('maxAmount', null)}
-              />
-            </Badge>
-          )}
-          {filters.employeeIds.length > 0 && (
-            <Badge variant="secondary" className="gap-1">
-              {filters.employeeIds.length} Employee(s)
-              <X
-                className="h-3 w-3 cursor-pointer"
-                onClick={() => updateFilter('employeeIds', [])}
               />
             </Badge>
           )}

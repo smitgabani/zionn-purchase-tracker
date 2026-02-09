@@ -42,6 +42,7 @@ import { Database } from '@/lib/types/database.types'
 import { format } from 'date-fns'
 import { PurchaseFilters, type PurchaseFilterValues } from '@/components/purchases/PurchaseFilters'
 import { convertToCSV, downloadCSV, formatDateForExport, formatCurrencyForExport } from '@/lib/utils/export'
+import { parseUTCDate } from '@/lib/utils/date'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -83,6 +84,7 @@ export default function PurchasesPage() {
     card_id: '',
     category_id: '',
     description: '',
+    order_number: '',
   })
 
   // Filter state
@@ -91,7 +93,6 @@ export default function PurchasesPage() {
     endDate: null,
     minAmount: null,
     maxAmount: null,
-    employeeIds: [],
     cardIds: [],
     source: null,
     reviewedStatus: null,
@@ -113,10 +114,10 @@ export default function PurchasesPage() {
 
     // Date range
     if (filters.startDate) {
-      filtered = filtered.filter(p => new Date(p.created_at) >= filters.startDate!)
+      filtered = filtered.filter(p => parseUTCDate(p.purchase_date) >= filters.startDate!)
     }
     if (filters.endDate) {
-      filtered = filtered.filter(p => new Date(p.created_at) <= filters.endDate!)
+      filtered = filtered.filter(p => parseUTCDate(p.purchase_date) <= filters.endDate!)
     }
 
     // Amount range
@@ -125,11 +126,6 @@ export default function PurchasesPage() {
     }
     if (filters.maxAmount !== null) {
       filtered = filtered.filter(p => p.amount <= filters.maxAmount!)
-    }
-
-    // Employee filter
-    if (filters.employeeIds.length > 0) {
-      filtered = filtered.filter(p => p.employee_id && filters.employeeIds.includes(p.employee_id))
     }
 
     // Card filter
@@ -146,7 +142,10 @@ export default function PurchasesPage() {
 
     // Reviewed status filter
     if (filters.reviewedStatus !== null) {
-      filtered = filtered.filter(p => p.is_reviewed === filters.reviewedStatus)
+      filtered = filtered.filter(p => {
+        const hasInitials = p.reviewed_by_initials !== null && p.reviewed_by_initials !== ''
+        return filters.reviewedStatus ? hasInitials : !hasInitials
+      })
     }
 
     return filtered
@@ -177,21 +176,19 @@ export default function PurchasesPage() {
   // Read URL parameters and apply filters from shift navigation
   useEffect(() => {
     const cardId = searchParams.get('cardId')
-    const employeeId = searchParams.get('employeeId')
     const startDate = searchParams.get('startDate')
     const endDate = searchParams.get('endDate')
 
-    if (cardId || employeeId || startDate || endDate) {
+    if (cardId || startDate || endDate) {
       // Enable selection mode
       setSelectionMode(true)
-      
+
       // Set flag to auto-select after filters apply
       setAutoSelectFromShift(true)
-      
+
       setFilters(prev => ({
         ...prev,
         cardIds: cardId ? [cardId] : [],
-        employeeIds: employeeId ? [employeeId] : [],
         startDate: startDate ? new Date(startDate) : null,
         endDate: endDate ? new Date(endDate) : null,
       }))
@@ -215,7 +212,7 @@ export default function PurchasesPage() {
         .from('purchases')
         .select('*')
         .eq('admin_user_id', user.id)
-        .order('created_at', { ascending: false })
+        .order('purchase_date', { ascending: false })
 
       console.log("📦 Purchases fetched:", data?.length, "items", data)
       if (error) throw error
@@ -289,6 +286,7 @@ export default function PurchasesPage() {
         card_id: purchase.card_id || '',
         category_id: purchase.category_id || '',
         description: purchase.description || '',
+        order_number: purchase.order_number || '',
       })
     } else {
       setIsEditing(false)
@@ -301,6 +299,7 @@ export default function PurchasesPage() {
         card_id: '',
         category_id: '',
         description: '',
+        order_number: '',
       })
     }
     setIsDialogOpen(true)
@@ -321,6 +320,7 @@ export default function PurchasesPage() {
         card_id: formData.card_id || null,
         category_id: formData.category_id || null,
         description: formData.description || null,
+        order_number: formData.order_number || null,
       }
 
       if (isEditing && currentPurchase) {
@@ -371,51 +371,7 @@ export default function PurchasesPage() {
     }
   }
 
-  const toggleReviewed = async (purchase: Purchase) => {
-    try {
-      const { data, error } = await supabase
-        .from('purchases')
-        .update({ is_reviewed: !purchase.is_reviewed })
-        .eq('id', purchase.id)
-        .select()
-        .single()
-
-      if (error) throw error
-      dispatch(updatePurchase(data))
-      toast.success(data.is_reviewed ? 'Marked as reviewed' : 'Marked as unreviewed')
-    } catch (error: any) {
-      console.error('Error toggling reviewed:', error)
-      toast.error('Failed to update status')
-    }
-  }
-
-  // Bulk operations
-  const handleBulkMarkReviewed = async () => {
-    if (selectedPurchases.size === 0) return
-
-    try {
-      const selectedIds = Array.from(selectedPurchases)
-      
-      const { data, error } = await supabase
-        .from('purchases')
-        .update({ is_reviewed: true })
-        .in('id', selectedIds)
-        .select()
-
-      if (error) throw error
-      
-      // Update Redux store
-      data.forEach(purchase => {
-        dispatch(updatePurchase(purchase))
-      })
-
-      toast.success(`Marked ${selectedIds.length} purchase${selectedIds.length === 1 ? '' : 's'} as reviewed`)
-      setSelectedPurchases(new Set()) // Clear selection
-    } catch (error: any) {
-      console.error('Error bulk marking as reviewed:', error)
-      toast.error('Failed to mark purchases as reviewed')
-    }
-  }
+  // Bulk operations - removed bulk mark as reviewed since we're using initials now
 
   const handleBulkAssignEmployee = async () => {
     if (!bulkAssignEmployeeId || selectedPurchases.size === 0) {
@@ -425,7 +381,7 @@ export default function PurchasesPage() {
 
     try {
       const selectedIds = Array.from(selectedPurchases)
-      
+
       const { data, error } = await supabase
         .from('purchases')
         .update({ employee_id: bulkAssignEmployeeId })
@@ -433,7 +389,7 @@ export default function PurchasesPage() {
         .select()
 
       if (error) throw error
-      
+
       // Update Redux store
       data.forEach(purchase => {
         dispatch(updatePurchase(purchase))
@@ -441,13 +397,57 @@ export default function PurchasesPage() {
 
       const employeeName = employees.find(e => e.id === bulkAssignEmployeeId)?.name || 'employee'
       toast.success(`Assigned ${selectedIds.length} purchase${selectedIds.length === 1 ? '' : 's'} to ${employeeName}`)
-      
+
       setBulkAssignDialogOpen(false)
       setBulkAssignEmployeeId('')
       setSelectedPurchases(new Set()) // Clear selection
     } catch (error: any) {
       console.error('Error bulk assigning employee:', error)
       toast.error('Failed to assign employee')
+    }
+  }
+
+  const handleOrderNumberChange = async (purchaseId: string, orderNumber: string) => {
+    // Only allow digits and limit to 6 characters
+    const sanitized = orderNumber.replace(/\D/g, '').slice(0, 6)
+
+    try {
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ order_number: sanitized || null })
+        .eq('id', purchaseId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Update Redux store
+      dispatch(updatePurchase(data))
+    } catch (error: any) {
+      console.error('Error updating order number:', error)
+      toast.error('Failed to update order number')
+    }
+  }
+
+  const handleInitialsChange = async (purchaseId: string, initials: string) => {
+    // Convert to uppercase and limit to 10 characters
+    const sanitized = initials.toUpperCase().slice(0, 10)
+
+    try {
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ reviewed_by_initials: sanitized || null })
+        .eq('id', purchaseId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      // Update Redux store
+      dispatch(updatePurchase(data))
+    } catch (error: any) {
+      console.error('Error updating initials:', error)
+      toast.error('Failed to update initials')
     }
   }
 
@@ -492,14 +492,14 @@ export default function PurchasesPage() {
     
     const selected = filteredPurchases.filter(p => selectedPurchases.has(p.id))
     const exportData = selected.map(purchase => ({
-      'Date': formatDateForExport(purchase.created_at),
+      'Date': formatDateForExport(purchase.purchase_date),
       'Merchant': purchase.merchant || '',
       'Amount': formatCurrencyForExport(purchase.amount),
       'Employee': getEmployeeName(purchase.employee_id),
       'Card': getCardDisplay(purchase.card_id),
       'Category': categories.find(c => c.id === purchase.category_id)?.name || 'N/A',
       'Source': purchase.raw_email_id ? 'Email' : 'Manual',
-      'Reviewed': purchase.is_reviewed ? 'Yes' : 'No',
+      'Reviewed By': purchase.reviewed_by_initials || '',
       'Description': purchase.description || ''
     }))
     
@@ -515,14 +515,14 @@ export default function PurchasesPage() {
     }
     
     const exportData = filteredPurchases.map(purchase => ({
-      'Date': formatDateForExport(purchase.created_at),
+      'Date': formatDateForExport(purchase.purchase_date),
       'Merchant': purchase.merchant || '',
       'Amount': formatCurrencyForExport(purchase.amount),
       'Employee': getEmployeeName(purchase.employee_id),
       'Card': getCardDisplay(purchase.card_id),
       'Category': categories.find(c => c.id === purchase.category_id)?.name || 'N/A',
       'Source': purchase.raw_email_id ? 'Email' : 'Manual',
-      'Reviewed': purchase.is_reviewed ? 'Yes' : 'No',
+      'Reviewed By': purchase.reviewed_by_initials || '',
       'Description': purchase.description || ''
     }))
     
@@ -538,14 +538,14 @@ export default function PurchasesPage() {
     }
     
     const exportData = purchases.map(purchase => ({
-      'Date': formatDateForExport(purchase.created_at),
+      'Date': formatDateForExport(purchase.purchase_date),
       'Merchant': purchase.merchant || '',
       'Amount': formatCurrencyForExport(purchase.amount),
       'Employee': getEmployeeName(purchase.employee_id),
       'Card': getCardDisplay(purchase.card_id),
       'Category': categories.find(c => c.id === purchase.category_id)?.name || 'N/A',
       'Source': purchase.raw_email_id ? 'Email' : 'Manual',
-      'Reviewed': purchase.is_reviewed ? 'Yes' : 'No',
+      'Reviewed By': purchase.reviewed_by_initials || '',
       'Description': purchase.description || ''
     }))
     
@@ -729,6 +729,20 @@ export default function PurchasesPage() {
                       </SelectContent>
                     </Select>
                   </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="order_number">Order Number</Label>
+                    <Input
+                      id="order_number"
+                      type="text"
+                      maxLength={6}
+                      placeholder="6-digit order #"
+                      value={formData.order_number}
+                      onChange={(e) => {
+                        const sanitized = e.target.value.replace(/\D/g, '').slice(0, 6)
+                        setFormData({ ...formData, order_number: sanitized })
+                      }}
+                    />
+                  </div>
                   <div className="col-span-2 space-y-2">
                     <Label htmlFor="description">Description</Label>
                     <Input
@@ -757,7 +771,6 @@ export default function PurchasesPage() {
         <PurchaseFilters
           filters={filters}
           onFilterChange={setFilters}
-          employees={employees}
           cards={cards}
         />
       </div>
@@ -787,16 +800,6 @@ export default function PurchasesPage() {
             
             {/* Bulk Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-2">
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleBulkMarkReviewed}
-                className="w-full sm:w-auto"
-              >
-                <Check className="mr-2 h-4 w-4" />
-                Mark as Reviewed
-              </Button>
-              
               <Dialog open={bulkAssignDialogOpen} onOpenChange={setBulkAssignDialogOpen}>
                 <DialogTrigger asChild>
                   <Button
@@ -868,17 +871,16 @@ export default function PurchasesPage() {
               <TableHead>Date & Time</TableHead>
               <TableHead>Merchant</TableHead>
               <TableHead>Amount</TableHead>
-              <TableHead>Employee</TableHead>
               <TableHead>Card</TableHead>
-              <TableHead>Source</TableHead>
-              <TableHead>Reviewed</TableHead>
+              <TableHead>Order #</TableHead>
+              <TableHead>Initials</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredPurchases.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={selectionMode ? 9 : 8} className="text-center text-gray-500">
+                <TableCell colSpan={selectionMode ? 8 : 7} className="text-center text-gray-500">
                   {purchases.length === 0 ? 'No purchases found' : 'No purchases match your filters'}
                 </TableCell>
               </TableRow>
@@ -896,7 +898,7 @@ export default function PurchasesPage() {
                     </TableCell>
                   )}
                   <TableCell>
-                    {format(new Date(purchase.created_at), 'MMM dd, HH:mm')}
+                    {format(parseUTCDate(purchase.purchase_date), 'MMM dd, HH:mm')}
                   </TableCell>
                   <TableCell>
                     <div>
@@ -911,30 +913,26 @@ export default function PurchasesPage() {
                   <TableCell className="font-semibold">
                     ${purchase.amount.toFixed(2)}
                   </TableCell>
-                  <TableCell>{getEmployeeName(purchase.employee_id)}</TableCell>
                   <TableCell>{getCardDisplay(purchase.card_id)}</TableCell>
                   <TableCell>
-                    <Badge variant={purchase.raw_email_id ? 'default' : 'secondary'}>
-                      {purchase.raw_email_id ? 'Email' : 'Manual'}
-                    </Badge>
+                    <Input
+                      type="text"
+                      maxLength={6}
+                      placeholder="------"
+                      value={purchase.order_number || ''}
+                      onChange={(e) => handleOrderNumberChange(purchase.id, e.target.value)}
+                      className="w-24 h-8 text-center"
+                    />
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => toggleReviewed(purchase)}
-                      className={
-                        purchase.is_reviewed
-                          ? 'text-green-600 hover:text-green-700'
-                          : 'text-gray-400 hover:text-gray-500'
-                      }
-                    >
-                      {purchase.is_reviewed ? (
-                        <Check className="h-5 w-5" />
-                      ) : (
-                        <X className="h-5 w-5" />
-                      )}
-                    </Button>
+                    <Input
+                      type="text"
+                      maxLength={10}
+                      placeholder="---"
+                      value={purchase.reviewed_by_initials || ''}
+                      onChange={(e) => handleInitialsChange(purchase.id, e.target.value)}
+                      className="w-20 h-8 text-center uppercase"
+                    />
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-2">
@@ -961,12 +959,27 @@ export default function PurchasesPage() {
         </Table>
       </div>
 
-      {/* Filter Summary */}
-      {filteredPurchases.length !== purchases.length && (
-        <div className="mt-4 text-sm text-gray-600">
-          Showing {filteredPurchases.length} of {purchases.length} purchases
+      {/* Total Purchases Counter */}
+      <div className="mt-4 p-4 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-medium text-gray-700">
+            {filteredPurchases.length !== purchases.length ? (
+              <>
+                Showing {filteredPurchases.length} of {purchases.length} purchases
+              </>
+            ) : (
+              <>
+                Total Purchases: {purchases.length}
+              </>
+            )}
+          </span>
+          {filteredPurchases.length > 0 && (
+            <span className="text-gray-600">
+              Total Amount: ${filteredPurchases.reduce((sum, p) => sum + Number(p.amount), 0).toFixed(2)}
+            </span>
+          )}
         </div>
-      )}
+      </div>
     </div>
   )
 }

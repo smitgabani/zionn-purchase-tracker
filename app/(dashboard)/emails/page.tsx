@@ -25,6 +25,7 @@ import { Mail, Eye, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
 import { format } from 'date-fns'
+import { parseUTCDate } from '@/lib/utils/date'
 
 type RawEmail = Database['public']['Tables']['raw_emails']['Row']
 
@@ -145,7 +146,7 @@ export default function EmailsPage() {
                 <TableRow key={email.id}>
                   <TableCell className="text-sm text-gray-600">
                     {email.received_at
-                      ? format(new Date(email.received_at), 'MMM dd, yyyy HH:mm')
+                      ? format(parseUTCDate(email.received_at), 'MMM dd, yyyy HH:mm')
                       : '-'}
                   </TableCell>
                   <TableCell className="max-w-[200px] truncate text-sm">
@@ -192,6 +193,28 @@ export default function EmailsPage() {
         </Table>
       </div>
 
+      {/* Total Emails Counter */}
+      <div className="mt-4 p-4 border-t bg-gray-50 rounded-b-lg">
+        <div className="flex items-center justify-between text-sm">
+          <span className="font-medium text-gray-700">
+            Total Emails: {emails.length}
+          </span>
+          <div className="flex gap-4 text-gray-600">
+            <span>
+              Parsed: {emails.filter(e => e.parsed).length}
+            </span>
+            <span>
+              Unparsed: {emails.filter(e => !e.parsed).length}
+            </span>
+            {emails.filter(e => e.parse_error).length > 0 && (
+              <span className="text-red-600">
+                Errors: {emails.filter(e => e.parse_error).length}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
       {/* Email Detail Modal */}
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -218,7 +241,7 @@ export default function EmailsPage() {
                     <span className="font-semibold min-w-[100px]">Received:</span>
                     <span className="text-gray-700">
                       {selectedEmail.received_at
-                        ? format(new Date(selectedEmail.received_at), 'PPpp')
+                        ? format(parseUTCDate(selectedEmail.received_at), 'PPpp')
                         : '-'}
                     </span>
                   </div>

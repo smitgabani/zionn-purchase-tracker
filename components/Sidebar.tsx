@@ -14,6 +14,8 @@ import {
   Mail,
   Settings,
   X,
+  Wrench,
+  FilterX,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -23,7 +25,10 @@ const navigation = [
   { name: 'Employees', href: '/employees', icon: Users },
   { name: 'Cards', href: '/cards', icon: CreditCard },
   { name: 'Shifts', href: '/shifts', icon: Clock },
-  { name: 'Gmail Settings', href: '/gmail-settings', icon: Mail },
+  { name: 'Emails', href: '/emails', icon: Mail },
+  { name: 'Parsing Rules', href: '/parsing-rules', icon: FilterX },
+  { name: 'Tools', href: '/tools', icon: Wrench },
+  { name: 'Gmail Settings', href: '/gmail-settings', icon: Settings },
 ]
 
 interface SidebarProps {

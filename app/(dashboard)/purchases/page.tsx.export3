@@ -36,9 +36,16 @@ import {
   DialogFooter,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Plus, Pencil, Trash2, Check, X, CheckSquare, UserPlus } from 'lucide-react'
+import { Plus, Pencil, Trash2, Check, X, CheckSquare, UserPlus, Download } from 'lucide-react'
 import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
+import { convertToCSV, downloadCSV, formatDateForExport, formatCurrencyForExport } from '@/lib/utils/export'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { format } from 'date-fns'
 import { PurchaseFilters, type PurchaseFilterValues } from '@/components/purchases/PurchaseFilters'
 
@@ -62,6 +69,7 @@ export default function PurchasesPage() {
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false)
   const [selectedPurchases, setSelectedPurchases] = useState<Set<string>>(new Set())
+  const [autoSelectFromShift, setAutoSelectFromShift] = useState(false)
 
   // Bulk assign employee dialog
   const [bulkAssignDialogOpen, setBulkAssignDialogOpen] = useState(false)
@@ -174,6 +182,12 @@ export default function PurchasesPage() {
     const endDate = searchParams.get('endDate')
 
     if (cardId || employeeId || startDate || endDate) {
+      // Enable selection mode
+      setSelectionMode(true)
+      
+      // Set flag to auto-select after filters apply
+      setAutoSelectFromShift(true)
+      
       setFilters(prev => ({
         ...prev,
         cardIds: cardId ? [cardId] : [],
@@ -183,6 +197,14 @@ export default function PurchasesPage() {
       }))
     }
   }, [searchParams])
+
+  // Auto-select all filtered purchases when coming from shift
+  useEffect(() => {
+    if (autoSelectFromShift && filteredPurchases.length > 0) {
+      setSelectedPurchases(new Set(filteredPurchases.map(p => p.id)))
+      setAutoSelectFromShift(false) // Only run once
+    }
+  }, [autoSelectFromShift, filteredPurchases])
 
   const fetchPurchases = async () => {
     console.log("🔍 Fetching purchases for user:", user?.id)
@@ -435,6 +457,76 @@ export default function PurchasesPage() {
     if (selectionMode) {
       // Clear selections when exiting selection mode
       setSelectedPurchases(new Set())
+
+  const handleExportSelected = () => {
+    if (selectedPurchases.size === 0) {
+      toast.error('No purchases selected')
+      return
+    }
+    
+    const selected = filteredPurchases.filter(p => selectedPurchases.has(p.id))
+    const exportData = selected.map(purchase => ({
+      'Date': formatDateForExport(purchase.created_at),
+      'Merchant': purchase.merchant || '',
+      'Amount': formatCurrencyForExport(purchase.amount),
+      'Employee': getEmployeeName(purchase.employee_id),
+      'Card': getCardDisplay(purchase.card_id),
+      'Category': categories.find(c => c.id === purchase.category_id)?.name || 'N/A',
+      'Source': purchase.raw_email_id ? 'Email' : 'Manual',
+      'Reviewed': purchase.is_reviewed ? 'Yes' : 'No',
+      'Description': purchase.description || ''
+    }))
+    
+    const csv = convertToCSV(exportData, Object.keys(exportData[0]))
+    downloadCSV(csv, `selected-purchases-${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${selected.length} selected purchases`)
+  }
+
+  const handleExportFiltered = () => {
+    if (filteredPurchases.length === 0) {
+      toast.error('No purchases to export')
+      return
+    }
+    
+    const exportData = filteredPurchases.map(purchase => ({
+      'Date': formatDateForExport(purchase.created_at),
+      'Merchant': purchase.merchant || '',
+      'Amount': formatCurrencyForExport(purchase.amount),
+      'Employee': getEmployeeName(purchase.employee_id),
+      'Card': getCardDisplay(purchase.card_id),
+      'Category': categories.find(c => c.id === purchase.category_id)?.name || 'N/A',
+      'Source': purchase.raw_email_id ? 'Email' : 'Manual',
+      'Reviewed': purchase.is_reviewed ? 'Yes' : 'No',
+      'Description': purchase.description || ''
+    }))
+    
+    const csv = convertToCSV(exportData, Object.keys(exportData[0]))
+    downloadCSV(csv, `filtered-purchases-${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${filteredPurchases.length} purchases`)
+  }
+
+  const handleExportAll = () => {
+    if (purchases.length === 0) {
+      toast.error('No purchases to export')
+      return
+    }
+    
+    const exportData = purchases.map(purchase => ({
+      'Date': formatDateForExport(purchase.created_at),
+      'Merchant': purchase.merchant || '',
+      'Amount': formatCurrencyForExport(purchase.amount),
+      'Employee': getEmployeeName(purchase.employee_id),
+      'Card': getCardDisplay(purchase.card_id),
+      'Category': categories.find(c => c.id === purchase.category_id)?.name || 'N/A',
+      'Source': purchase.raw_email_id ? 'Email' : 'Manual',
+      'Reviewed': purchase.is_reviewed ? 'Yes' : 'No',
+      'Description': purchase.description || ''
+    }))
+    
+    const csv = convertToCSV(exportData, Object.keys(exportData[0]))
+    downloadCSV(csv, `all-purchases-${new Date().toISOString().split('T')[0]}.csv`)
+    toast.success(`Exported ${purchases.length} purchases`)
+  }
     }
   }
 
@@ -488,6 +580,27 @@ export default function PurchasesPage() {
           </p>
         </div>
         <div className="flex gap-2 w-full sm:w-auto">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="flex-1 sm:flex-none">
+                <Download className="mr-2 h-4 w-4" />
+                Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {selectionMode && selectedPurchases.size > 0 && (
+                <DropdownMenuItem onClick={handleExportSelected}>
+                  Export Selected ({selectedPurchases.size})
+                </DropdownMenuItem>
+              )}
+              <DropdownMenuItem onClick={handleExportFiltered}>
+                Export Filtered ({filteredPurchases.length})
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportAll}>
+                Export All ({purchases.length})
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
           <Button
             variant={selectionMode ? "outline" : "secondary"}
             onClick={toggleSelectionMode}

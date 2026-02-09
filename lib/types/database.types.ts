@@ -229,7 +229,8 @@ export interface Database {
           raw_email_id: string | null
           source: string
           notes: string | null
-          is_reviewed: boolean
+          order_number: string | null
+          reviewed_by_initials: string | null
           created_at: string
           updated_at: string
         }
@@ -247,7 +248,8 @@ export interface Database {
           raw_email_id?: string | null
           source?: string
           notes?: string | null
-          is_reviewed?: boolean
+          order_number?: string | null
+          reviewed_by_initials?: string | null
           created_at?: string
           updated_at?: string
         }
@@ -265,7 +267,8 @@ export interface Database {
           raw_email_id?: string | null
           source?: string
           notes?: string | null
-          is_reviewed?: boolean
+          order_number?: string | null
+          reviewed_by_initials?: string | null
           created_at?: string
           updated_at?: string
         }
