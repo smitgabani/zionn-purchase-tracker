@@ -44,3 +44,13 @@ next-env.d.ts
 google.json
 .env.local
 .env*.local
+
+# Backup files (prevent future pollution)
+*.bak*
+*.backup
+*.bkp*
+*.old
+*.clean
+*.exp*
+*.export*
+*~

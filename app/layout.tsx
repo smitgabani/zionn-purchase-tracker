@@ -4,6 +4,10 @@ import "./globals.css";
 import StoreProvider from "@/lib/store/StoreProvider";
 import AuthProvider from "@/components/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { validateEnv } from "@/lib/env";
+
+// Validate environment variables on server-side only
+if (typeof window === 'undefined') validateEnv();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

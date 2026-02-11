@@ -1,0 +1,1 @@
+- after you implement check the @architectural-improvement-plan.md @sonnet-execution-instructions.md to check if the plan is being followed
