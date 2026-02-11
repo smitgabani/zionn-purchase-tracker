@@ -216,6 +216,7 @@ export default function PurchasesPage() {
         .from('purchases')
         .select('*')
         .eq('admin_user_id', user.id)
+        .is('deleted_at', null)
         .order('purchase_date', { ascending: false })
 
       logger.log("📦 Purchases fetched:", data?.length, "items", data)

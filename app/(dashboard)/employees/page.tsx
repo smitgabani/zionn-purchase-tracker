@@ -61,6 +61,7 @@ export default function EmployeesPage() {
       const { data, error } = await supabase
         .from('employees')
         .select('*')
+        .is('deleted_at', null)
         .order('created_at', { ascending: false })
 
       if (error) throw error
