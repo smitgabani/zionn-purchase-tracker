@@ -12,9 +12,20 @@ export const runtime = 'nodejs'
  */
 export async function GET(request: NextRequest) {
   try {
+    // Verify CRON_SECRET is configured
+    const cronSecret = process.env.CRON_SECRET
+    if (!cronSecret) {
+      console.error('CRON_SECRET not configured')
+      return NextResponse.json(
+        { error: 'Server configuration error' },
+        { status: 500 }
+      )
+    }
+
     // Verify this is a cron request (security)
     const authHeader = request.headers.get('authorization')
-    if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+    if (authHeader !== `Bearer ${cronSecret}`) {
+      console.warn('Unauthorized cron request')
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
