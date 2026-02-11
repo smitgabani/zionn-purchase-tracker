@@ -9,6 +9,8 @@ import { setEmployees } from '@/lib/store/slices/employeesSlice'
 import { setCards } from '@/lib/store/slices/cardsSlice'
 import { setCategories } from '@/lib/store/slices/categoriesSlice'
 import { logger } from '@/lib/logger'
+import { validateOrError } from '@/lib/validation/client'
+import { createPurchaseSchema, updatePurchaseSchema } from '@/lib/validation/schemas'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -312,6 +314,7 @@ export default function PurchasesPage() {
     if (!user) return
 
     try {
+      // Prepare purchase data
       const purchaseData: any = {
         admin_user_id: user.id,
         purchase_date: formData.purchase_date || new Date().toISOString().split('T')[0],
@@ -322,12 +325,19 @@ export default function PurchasesPage() {
         category_id: formData.category_id || null,
         description: formData.description || null,
         order_number: formData.order_number || null,
+        source: 'manual',
       }
+
+      // Validate based on operation type
+      const schema = isEditing ? updatePurchaseSchema : createPurchaseSchema
+      const validated = validateOrError(schema, purchaseData, 'Invalid purchase data')
+
+      if (!validated) return // Validation failed, error toast already shown
 
       if (isEditing && currentPurchase) {
         const { data, error } = await supabase
           .from('purchases')
-          .update(purchaseData)
+          .update(validated)
           .eq('id', currentPurchase.id)
           .select()
           .single()
@@ -338,7 +348,7 @@ export default function PurchasesPage() {
       } else {
         const { data, error } = await supabase
           .from('purchases')
-          .insert([purchaseData])
+          .insert([validated])
           .select()
           .single()
 

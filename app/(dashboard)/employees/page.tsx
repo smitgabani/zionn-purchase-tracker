@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
 import { setEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/lib/store/slices/employeesSlice'
+import { validateOrError } from '@/lib/validation/client'
+import { createEmployeeSchema, updateEmployeeSchema } from '@/lib/validation/schemas'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -105,12 +107,16 @@ export default function EmployeesPage() {
     try {
       if (isEditing && currentEmployee) {
         // Update existing employee
+        const updateData = {
+          name: formData.name,
+        }
+
+        const validated = validateOrError(updateEmployeeSchema, updateData, 'Invalid employee data')
+        if (!validated) return
+
         const { data, error } = await supabase
           .from('employees')
-          .update({
-            name: formData.name,
-            notes: formData.notes || null,
-          })
+          .update(validated)
           .eq('id', currentEmployee.id)
           .select()
           .single()
@@ -120,15 +126,17 @@ export default function EmployeesPage() {
         toast.success('Employee updated successfully')
       } else {
         // Create new employee
-        const newEmployee: EmployeeInsert = {
+        const newEmployee = {
           admin_user_id: user.id,
           name: formData.name,
-          notes: formData.notes || null,
         }
+
+        const validated = validateOrError(createEmployeeSchema, { name: newEmployee.name }, 'Invalid employee data')
+        if (!validated) return
 
         const { data, error } = await supabase
           .from('employees')
-          .insert(newEmployee)
+          .insert({ ...validated, admin_user_id: user.id })
           .select()
           .single()
 

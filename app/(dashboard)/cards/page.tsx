@@ -5,6 +5,8 @@ import { createClient } from '@/lib/supabase/client'
 import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
 import { setCards, addCard, updateCard, deleteCard } from '@/lib/store/slices/cardsSlice'
 import { setEmployees } from '@/lib/store/slices/employeesSlice'
+import { validateOrError } from '@/lib/validation/client'
+import { createCardSchema, updateCardSchema } from '@/lib/validation/schemas'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -148,27 +150,23 @@ export default function CardsPage() {
 
     if (!user) return
 
-    // Validate last_four is 4 digits
-    if (!/^\d{4}$/.test(formData.last_four)) {
-      toast.error('Last 4 digits must be exactly 4 numbers')
-      return
-    }
-
     try {
-      const employeeId = formData.employee_id === UNASSIGNED_VALUE ? null : formData.employee_id
+      const cardData = {
+        last_four: formData.last_four,
+        bank_name: formData.bank_name,
+        nickname: formData.nickname || null,
+      }
+
+      // Validate based on operation type
+      const schema = isEditing ? updateCardSchema : createCardSchema
+      const validated = validateOrError(schema, cardData, 'Invalid card data')
+      if (!validated) return
 
       if (isEditing && currentCard) {
         // Update existing card
         const { data, error } = await supabase
           .from('cards')
-          .update({
-            last_four: formData.last_four,
-            bank_name: formData.bank_name,
-            card_type: formData.card_type || null,
-            nickname: formData.nickname || null,
-            employee_id: employeeId,
-            is_shared: formData.is_shared,
-          })
+          .update(validated)
           .eq('id', currentCard.id)
           .select()
           .single()
@@ -178,14 +176,9 @@ export default function CardsPage() {
         toast.success('Card updated successfully')
       } else {
         // Create new card
-        const newCard: CardInsert = {
+        const newCard = {
           admin_user_id: user.id,
-          last_four: formData.last_four,
-          bank_name: formData.bank_name,
-          card_type: formData.card_type || null,
-          nickname: formData.nickname || null,
-          employee_id: employeeId,
-          is_shared: formData.is_shared,
+          ...validated,
         }
 
         const { data, error } = await supabase
