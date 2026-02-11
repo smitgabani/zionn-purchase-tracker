@@ -1,1 +1,1 @@
-- after you implement check the @architectural-improvement-plan.md @sonnet-execution-instructions.md to check if the plan is being followed and give me options for new 
+- after you implement check the @architectural-improvement-plan.md @sonnet-execution-instructions.md to check if the plan is being followed and give me choice on what to do next

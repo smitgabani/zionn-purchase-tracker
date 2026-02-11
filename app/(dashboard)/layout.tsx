@@ -5,6 +5,7 @@ import ProtectedRoute from '@/components/ProtectedRoute'
 import Sidebar from '@/components/Sidebar'
 import Header from '@/components/Header'
 import AutoEmailSync from '@/components/AutoEmailSync'
+import { ErrorBoundary } from '@/components/ErrorBoundary'
 import { Menu, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -60,7 +61,9 @@ export default function DashboardLayout({
 
           {/* Main content area */}
           <main className="flex-1 overflow-y-auto bg-gray-50 p-4 md:p-6">
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </main>
         </div>
       </div>

@@ -4,6 +4,7 @@ import "./globals.css";
 import StoreProvider from "@/lib/store/StoreProvider";
 import AuthProvider from "@/components/AuthProvider";
 import { Toaster } from "@/components/ui/sonner";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { validateEnv } from "@/lib/env";
 
 // Validate environment variables on server-side only
@@ -40,12 +41,14 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <StoreProvider>
-          <AuthProvider>
-            {children}
-            <Toaster />
-          </AuthProvider>
-        </StoreProvider>
+        <ErrorBoundary>
+          <StoreProvider>
+            <AuthProvider>
+              {children}
+              <Toaster />
+            </AuthProvider>
+          </StoreProvider>
+        </ErrorBoundary>
       </body>
     </html>
   );
