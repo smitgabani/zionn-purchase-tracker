@@ -6,6 +6,7 @@ import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
 import { setEmployees, addEmployee, updateEmployee, deleteEmployee } from '@/lib/store/slices/employeesSlice'
 import { validateOrError } from '@/lib/validation/client'
 import { createEmployeeSchema, updateEmployeeSchema } from '@/lib/validation/schemas'
+import { handleError } from '@/lib/error-handler'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -147,8 +148,7 @@ export default function EmployeesPage() {
 
       handleCloseDialog()
     } catch (error) {
-      toast.error('Failed to save employee')
-      console.error(error)
+      handleError(error, 'Failed to save employee')
     }
   }
 
@@ -166,8 +166,7 @@ export default function EmployeesPage() {
       dispatch(deleteEmployee(id))
       toast.success('Employee deleted successfully')
     } catch (error) {
-      toast.error('Failed to delete employee')
-      console.error(error)
+      handleError(error, 'Failed to delete employee')
     }
   }
 

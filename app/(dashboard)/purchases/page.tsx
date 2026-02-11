@@ -11,6 +11,7 @@ import { setCategories } from '@/lib/store/slices/categoriesSlice'
 import { logger } from '@/lib/logger'
 import { validateOrError } from '@/lib/validation/client'
 import { createPurchaseSchema, updatePurchaseSchema } from '@/lib/validation/schemas'
+import { handleError } from '@/lib/error-handler'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -358,9 +359,8 @@ export default function PurchasesPage() {
       }
 
       setIsDialogOpen(false)
-    } catch (error: any) {
-      console.error('Error saving purchase:', error)
-      toast.error('Failed to save purchase')
+    } catch (error) {
+      handleError(error, 'Failed to save purchase')
     }
   }
 
@@ -377,9 +377,8 @@ export default function PurchasesPage() {
       if (error) throw error
       dispatch(deletePurchase(id))
       toast.success('Purchase deleted successfully')
-    } catch (error: any) {
-      console.error('Error deleting purchase:', error)
-      toast.error('Failed to delete purchase')
+    } catch (error) {
+      handleError(error, 'Failed to delete purchase')
     }
   }
 

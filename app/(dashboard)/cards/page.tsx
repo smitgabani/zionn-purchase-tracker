@@ -7,6 +7,7 @@ import { setCards, addCard, updateCard, deleteCard } from '@/lib/store/slices/ca
 import { setEmployees } from '@/lib/store/slices/employeesSlice'
 import { validateOrError } from '@/lib/validation/client'
 import { createCardSchema, updateCardSchema } from '@/lib/validation/schemas'
+import { handleError } from '@/lib/error-handler'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -194,8 +195,7 @@ export default function CardsPage() {
 
       handleCloseDialog()
     } catch (error) {
-      toast.error('Failed to save card')
-      console.error(error)
+      handleError(error, 'Failed to save card')
     }
   }
 
@@ -213,8 +213,7 @@ export default function CardsPage() {
       dispatch(deleteCard(id))
       toast.success('Card deleted successfully')
     } catch (error) {
-      toast.error('Failed to delete card')
-      console.error(error)
+      handleError(error, 'Failed to delete card')
     }
   }
 
