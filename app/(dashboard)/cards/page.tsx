@@ -203,9 +203,10 @@ export default function CardsPage() {
     if (!confirm('Are you sure you want to delete this card?')) return
 
     try {
+      // Soft delete: set deleted_at timestamp instead of permanently deleting
       const { error } = await supabase
         .from('cards')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', id)
 
       if (error) throw error

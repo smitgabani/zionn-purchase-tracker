@@ -368,9 +368,10 @@ export default function PurchasesPage() {
     if (!confirm('Are you sure you want to delete this purchase?')) return
 
     try {
+      // Soft delete: set deleted_at timestamp instead of permanently deleting
       const { error } = await supabase
         .from('purchases')
-        .delete()
+        .update({ deleted_at: new Date().toISOString() })
         .eq('id', id)
 
       if (error) throw error
