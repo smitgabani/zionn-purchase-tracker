@@ -5,6 +5,7 @@
 
 import { createClient as createClientBrowser } from '@/lib/supabase/client'
 import { createClient as createServerClient } from '@/lib/supabase/server'
+import { logger } from '@/lib/logger'
 
 /**
  * Get valid Gmail access token with automatic refresh (Server-side)
@@ -34,15 +35,15 @@ export async function getValidGmailTokenServer() {
   const fiveMinutes = 5 * 60 * 1000
 
   if (expiryTime - now < fiveMinutes) {
-    console.log('🔄 Access token expired or expiring soon, refreshing...')
-    
+    logger.log('🔄 Access token expired or expiring soon, refreshing...')
+
     // Refresh using the GmailService
     const { GmailService } = await import('@/lib/gmail/service')
     const gmailService = new GmailService(
       syncState.access_token,
       syncState.refresh_token
     )
-    
+
     const newTokens = await gmailService.refreshAccessToken()
 
     // Update database with new tokens
@@ -59,7 +60,7 @@ export async function getValidGmailTokenServer() {
       throw new Error('Failed to update refreshed tokens')
     }
 
-    console.log('✅ Token refreshed! New expiry:', new Date(newTokens.expiry_date).toISOString())
+    logger.log('✅ Token refreshed! New expiry:', new Date(newTokens.expiry_date).toISOString())
     return newTokens.access_token
   }
 
@@ -130,8 +131,8 @@ export async function getValidGmailToken() {
   const fiveMinutes = 5 * 60 * 1000
 
   if (expiryTime - now < fiveMinutes) {
-    console.log('🔄 Access token expired or expiring soon, refreshing...')
-    
+    logger.log('🔄 Access token expired or expiring soon, refreshing...')
+
     // Refresh the token via API
     const response = await fetch('/api/auth/google/refresh', {
       method: 'POST',
@@ -142,7 +143,7 @@ export async function getValidGmailToken() {
     }
 
     const { expiry } = await response.json()
-    console.log('✅ Token refreshed! New expiry:', expiry)
+    logger.log('✅ Token refreshed! New expiry:', expiry)
 
     // Re-fetch updated sync state
     const { data: updatedState } = await supabase

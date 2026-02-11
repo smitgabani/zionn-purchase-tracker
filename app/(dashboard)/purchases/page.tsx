@@ -8,6 +8,7 @@ import { setPurchases, addPurchase, updatePurchase, deletePurchase } from '@/lib
 import { setEmployees } from '@/lib/store/slices/employeesSlice'
 import { setCards } from '@/lib/store/slices/cardsSlice'
 import { setCategories } from '@/lib/store/slices/categoriesSlice'
+import { logger } from '@/lib/logger'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -162,7 +163,7 @@ export default function PurchasesPage() {
   }, [filteredPurchases, selectedPurchases])
 
   // Debug: log filter results after useMemo completes
-  console.log("📊 Total purchases:", purchases.length, "Filtered:", filteredPurchases.length, "Active filters:", Object.values(filters).filter(v => v !== null && (Array.isArray(v) ? v.length > 0 : v !== "")).length)
+  logger.log("📊 Total purchases:", purchases.length, "Filtered:", filteredPurchases.length, "Active filters:", Object.values(filters).filter(v => v !== null && (Array.isArray(v) ? v.length > 0 : v !== "")).length)
 
   useEffect(() => {
     if (user) {
@@ -204,7 +205,7 @@ export default function PurchasesPage() {
   }, [autoSelectFromShift, filteredPurchases])
 
   const fetchPurchases = async () => {
-    console.log("🔍 Fetching purchases for user:", user?.id)
+    logger.log("🔍 Fetching purchases for user:", user?.id)
     if (!user) return
 
     try {
@@ -214,7 +215,7 @@ export default function PurchasesPage() {
         .eq('admin_user_id', user.id)
         .order('purchase_date', { ascending: false })
 
-      console.log("📦 Purchases fetched:", data?.length, "items", data)
+      logger.log("📦 Purchases fetched:", data?.length, "items", data)
       if (error) throw error
       dispatch(setPurchases(data || []))
     } catch (error: any) {

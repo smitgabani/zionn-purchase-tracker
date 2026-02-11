@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge'
 import { PlayCircle, RefreshCw, Trash2, Database, Mail, FileText, AlertTriangle, SearchX, BarChart3, TestTube2, Shield, RotateCcw, CreditCard } from 'lucide-react'
 import { toast } from 'sonner'
+import { logger } from '@/lib/logger'
 
 type ToolAction = {
   id: string
@@ -55,7 +56,7 @@ export default function ToolsPage() {
       }
 
       // Log detailed results
-      console.log(`[${action}] Result:`, data)
+      logger.log(`[${action}] Result:`, data)
 
       // Show specific stats if available
       if (data.emailsParsed !== undefined) {

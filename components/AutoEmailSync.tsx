@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector } from '@/lib/store/hooks'
 import { toast } from 'sonner'
+import { logger } from '@/lib/logger'
 
 /**
  * Auto Email Sync Component
@@ -29,7 +30,7 @@ export default function AutoEmailSync() {
         .single()
 
       if (!syncState || !syncState.is_connected) {
-        console.log('Gmail not connected, skipping auto-sync')
+        logger.log('Gmail not connected, skipping auto-sync')
         return
       }
 
@@ -49,7 +50,7 @@ export default function AutoEmailSync() {
         toast.success(`Synced ${data.synced} new email(s)`)
       }
 
-      console.log('Auto-sync completed:', data)
+      logger.log('Auto-sync completed:', data)
     } catch (error: any) {
       console.error('Auto-sync error:', error)
       // Don't show error toast for auto-sync to avoid annoying users
