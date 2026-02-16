@@ -14,12 +14,14 @@ import {
   X,
   ChevronDown,
   ChevronRight,
+  Store,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Purchases', href: '/purchases', icon: ShoppingCart },
+  { name: 'Merchants', href: '/merchants', icon: Store },
   { name: 'Employees', href: '/employees', icon: Users },
   { name: 'Cards', href: '/cards', icon: CreditCard },
   { name: 'Shifts', href: '/shifts', icon: Clock },

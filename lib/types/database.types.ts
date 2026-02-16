@@ -305,6 +305,36 @@ export interface Database {
           created_at?: string
         }
       }
+      merchants: {
+        Row: {
+          id: string
+          admin_user_id: string
+          name: string
+          notes: string | null
+          created_at: string
+          updated_at: string
+          deleted_at: string | null
+        }
+        Insert: {
+          id?: string
+          admin_user_id: string
+          name: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+        Update: {
+          id?: string
+          admin_user_id?: string
+          name?: string
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+          deleted_at?: string | null
+        }
+      }
+      }
       gmail_sync_state: {
         Row: {
           id: string
@@ -360,4 +390,3 @@ export interface Database {
       [_ in never]: never
     }
   }
-}

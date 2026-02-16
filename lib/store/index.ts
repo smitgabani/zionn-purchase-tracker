@@ -4,6 +4,7 @@ import employeesReducer from './slices/employeesSlice'
 import cardsReducer from './slices/cardsSlice'
 import categoriesReducer from './slices/categoriesSlice'
 import purchasesReducer from './slices/purchasesSlice'
+import merchantsReducer from './slices/merchantsSlice'
 
 export const makeStore = () => {
   return configureStore({
@@ -13,6 +14,7 @@ export const makeStore = () => {
       cards: cardsReducer,
       categories: categoriesReducer,
       purchases: purchasesReducer,
+      merchants: merchantsReducer,
     },
   })
 }

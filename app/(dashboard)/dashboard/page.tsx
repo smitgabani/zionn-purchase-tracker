@@ -10,9 +10,9 @@ import { OngoingShiftCard } from '@/components/dashboard/OngoingShiftCard'
 import { PurchaseEditModal } from '@/components/dashboard/PurchaseEditModal'
 import { AlertPanel } from '@/components/dashboard/AlertPanel'
 import { toast } from 'sonner'
-import { Database } from '@/lib/types/database.types'
-import { isPurchaseInShift } from '@/lib/utils/date'
+import { isPurchaseInShift, getShiftDayRange, isInCurrentShiftDay } from '@/lib/utils/date'
 import { startOfDay } from 'date-fns'
+import type { Database } from '@/lib/types/database.types'
 
 type Purchase = Database['public']['Tables']['purchases']['Row']
 type CardType = Database['public']['Tables']['cards']['Row']
@@ -196,7 +196,15 @@ export default function DashboardPage() {
     return total
   }, [shiftPurchases])
 
-  const totalShiftsToday = shifts.length
+  const totalShiftSpending = useMemo(() => {
+    return purchases
+      .filter((purchase) => isInCurrentShiftDay(purchase.purchase_date))
+      .reduce((sum, p) => sum + p.amount, 0)
+  }, [purchases])
+
+  const totalShiftsToday = useMemo(() => {
+    return shifts.filter((shift) => isInCurrentShiftDay(shift.start_time)).length
+  }, [shifts])
 
   // Handlers
   const handleToggleExpand = (shiftId: string) => {
@@ -280,10 +288,13 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-gray-500">
-                Active Spending
+                Total Shift Spending
               </h3>
               <p className="mt-2 text-3xl font-bold text-green-600">
-                ${totalActiveSpending.toFixed(2)}
+                ${totalShiftSpending.toFixed(2)}
+              </p>
+              <p className="text-xs text-gray-400 mt-1">
+                9:00 AM - 4:30 AM cycle
               </p>
             </div>
             <DollarSign className="h-8 w-8 text-green-600" />
@@ -308,7 +319,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <h3 className="text-sm font-medium text-gray-500">
-                Total Shifts Today
+                Total Shifts This Cycle
               </h3>
               <p className="mt-2 text-3xl font-bold text-gray-900">
                 {totalShiftsToday}
