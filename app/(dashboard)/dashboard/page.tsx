@@ -11,6 +11,7 @@ import { PurchaseEditModal } from '@/components/dashboard/PurchaseEditModal'
 import { AlertPanel } from '@/components/dashboard/AlertPanel'
 import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
+import { isPurchaseInShift } from '@/lib/utils/date'
 import { startOfDay } from 'date-fns'
 
 type Purchase = Database['public']['Tables']['purchases']['Row']
@@ -86,7 +87,6 @@ export default function DashboardPage() {
         cards!inner(last_four, nickname, bank_name),
         employees(name)
       `)
-      .gte('start_time', todayStart)
       .order('start_time', { ascending: false })
 
     if (error) {
@@ -175,18 +175,17 @@ export default function DashboardPage() {
     return purchases.filter((p) => {
       if (!p.card_id) return false // Skip manual purchases
 
-      const hasActiveShift = ongoingShifts.some((shift) => {
-        if (shift.card_id !== p.card_id) return false
+      // Check if purchase falls within ANY shift (ongoing or ended)
+      const hasMatchingShift = shifts.some((shift) => 
+        isPurchaseInShift(
+          { purchase_date: p.purchase_date, card_id: p.card_id as string },
+          shift
+        )
+      )
 
-        const purchaseTime = new Date(p.purchase_date)
-        const shiftStart = new Date(shift.start_time)
-
-        return purchaseTime >= shiftStart
-      })
-
-      return !hasActiveShift
+      return !hasMatchingShift
     })
-  }, [purchases, ongoingShifts])
+  }, [purchases, shifts])
 
   // Statistics
   const totalActiveSpending = useMemo(() => {

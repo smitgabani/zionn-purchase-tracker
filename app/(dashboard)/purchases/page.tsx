@@ -1,10 +1,20 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
-import { setPurchases, addPurchase, updatePurchase, deletePurchase } from '@/lib/store/slices/purchasesSlice'
+import {
+  setPurchases,
+  appendPurchases,
+  resetPurchases,
+  addPurchase,
+  updatePurchase,
+  deletePurchase,
+  setLoadingMore,
+  setHasMore,
+  incrementPage
+} from '@/lib/store/slices/purchasesSlice'
 import { setEmployees } from '@/lib/store/slices/employeesSlice'
 import { setCards } from '@/lib/store/slices/cardsSlice'
 import { setCategories } from '@/lib/store/slices/categoriesSlice'
@@ -57,15 +67,20 @@ import {
 type Purchase = Database['public']['Tables']['purchases']['Row']
 type PurchaseInsert = Database['public']['Tables']['purchases']['Insert']
 
+const PURCHASES_PER_PAGE = 100
+
 export default function PurchasesPage() {
   const { user } = useAppSelector((state) => state.auth)
-  const { purchases } = useAppSelector((state) => state.purchases)
+  const { purchases, currentPage, hasMore, isLoadingMore } = useAppSelector((state) => state.purchases)
   const { employees } = useAppSelector((state) => state.employees)
   const { cards } = useAppSelector((state) => state.cards)
   const { categories } = useAppSelector((state) => state.categories)
   const dispatch = useAppDispatch()
   const searchParams = useSearchParams()
   const supabase = createClient()
+
+  // Infinite scroll observer ref
+  const observerTarget = useRef<HTMLDivElement>(null)
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -90,7 +105,6 @@ export default function PurchasesPage() {
     description: '',
     order_number: '',
   })
-
   // Filter state
   const [filters, setFilters] = useState<PurchaseFilterValues>({
     startDate: null,
@@ -101,58 +115,58 @@ export default function PurchasesPage() {
     source: null,
     reviewedStatus: null,
     searchQuery: '',
+  // Apply client-side filtering (safety net in addition to server-side filtering)
   })
-
-  // Apply filters to purchases
   const filteredPurchases = useMemo(() => {
-    let filtered = [...purchases]
+    let result = purchases
 
-    // Search query
+    // Search query filter
     if (filters.searchQuery) {
       const query = filters.searchQuery.toLowerCase()
-      filtered = filtered.filter(p => 
+      result = result.filter(p => 
         p.merchant?.toLowerCase().includes(query) ||
         p.description?.toLowerCase().includes(query)
       )
     }
 
-    // Date range
+    // Date range filters
     if (filters.startDate) {
-      filtered = filtered.filter(p => parseUTCDate(p.purchase_date) >= filters.startDate!)
+      result = result.filter(p => new Date(p.purchase_date) >= filters.startDate!)
     }
     if (filters.endDate) {
-      filtered = filtered.filter(p => parseUTCDate(p.purchase_date) <= filters.endDate!)
+      result = result.filter(p => new Date(p.purchase_date) <= filters.endDate!)
     }
 
-    // Amount range
+    // Amount range filters
     if (filters.minAmount !== null) {
-      filtered = filtered.filter(p => p.amount >= filters.minAmount!)
+      result = result.filter(p => p.amount >= filters.minAmount!)
     }
     if (filters.maxAmount !== null) {
-      filtered = filtered.filter(p => p.amount <= filters.maxAmount!)
+      result = result.filter(p => p.amount <= filters.maxAmount!)
     }
 
     // Card filter
     if (filters.cardIds.length > 0) {
-      filtered = filtered.filter(p => p.card_id && filters.cardIds.includes(p.card_id))
+      result = result.filter(p => p.card_id && filters.cardIds.includes(p.card_id))
     }
 
     // Source filter
-    if (filters.source !== null) {
-      filtered = filtered.filter(p => 
-        filters.source === 'email' ? p.raw_email_id !== null : p.raw_email_id === null
-      )
+    if (filters.source === 'email') {
+      result = result.filter(p => p.raw_email_id !== null)
+    } else if (filters.source === 'manual') {
+      result = result.filter(p => p.raw_email_id === null)
     }
 
     // Reviewed status filter
     if (filters.reviewedStatus !== null) {
-      filtered = filtered.filter(p => {
-        const hasInitials = p.reviewed_by_initials !== null && p.reviewed_by_initials !== ''
-        return filters.reviewedStatus ? hasInitials : !hasInitials
-      })
+      if (filters.reviewedStatus) {
+        result = result.filter(p => p.reviewed_by_initials && p.reviewed_by_initials !== '')
+      } else {
+        result = result.filter(p => !p.reviewed_by_initials || p.reviewed_by_initials === '')
+      }
     }
 
-    return filtered
+    return result
   }, [purchases, filters])
 
   // Calculate selection summary
@@ -168,15 +182,41 @@ export default function PurchasesPage() {
   // Debug: log filter results after useMemo completes
   logger.log("📊 Total purchases:", purchases.length, "Filtered:", filteredPurchases.length, "Active filters:", Object.values(filters).filter(v => v !== null && (Array.isArray(v) ? v.length > 0 : v !== "")).length)
 
+  // Fetch initial data on mount
   useEffect(() => {
-    if (user) {
-      fetchPurchases()
-      fetchEmployees()
-      fetchCards()
-      fetchCategories()
-    }
+    fetchEmployees()
+    fetchCards()
+    fetchCategories()
   }, [user])
 
+  // Fetch purchases when user or filters change
+  useEffect(() => {
+    if (user) {
+      dispatch(resetPurchases())
+      fetchPurchases(0, false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, filters])
+
+  // Infinite scroll observer
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          dispatch(incrementPage())
+          fetchPurchases(currentPage + 1, true)
+        }
+      },
+      { threshold: 1.0 }
+    )
+
+    if (observerTarget.current) {
+      observer.observe(observerTarget.current)
+    }
+
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMore, isLoadingMore, currentPage])
   // Read URL parameters and apply filters from shift navigation
   useEffect(() => {
     const cardId = searchParams.get('cardId')
@@ -207,26 +247,93 @@ export default function PurchasesPage() {
     }
   }, [autoSelectFromShift, filteredPurchases])
 
-  const fetchPurchases = async () => {
-    logger.log("🔍 Fetching purchases for user:", user?.id)
+  // Fetch purchases with server-side filtering and pagination
+  const fetchPurchases = useCallback(async (page = 0, append = false) => {
+    logger.log("🔍 Fetching purchases for user:", user?.id, "page:", page)
     if (!user) return
 
     try {
-      const { data, error } = await supabase
+      if (append) {
+        dispatch(setLoadingMore(true))
+      }
+
+      // Build base query
+      let query = supabase
         .from('purchases')
-        .select('*')
+        .select('*', { count: 'exact' })
         .eq('admin_user_id', user.id)
         .is('deleted_at', null)
-        .order('purchase_date', { ascending: false })
 
-      logger.log("📦 Purchases fetched:", data?.length, "items", data)
+      // Apply search query filter
+      if (filters.searchQuery) {
+        query = query.or(`merchant.ilike.%${filters.searchQuery}%,description.ilike.%${filters.searchQuery}%`)
+      }
+
+      // Apply date range filters
+      if (filters.startDate) {
+        query = query.gte('purchase_date', filters.startDate.toISOString())
+      }
+      if (filters.endDate) {
+        query = query.lte('purchase_date', filters.endDate.toISOString())
+      }
+
+      // Apply amount range filters
+      if (filters.minAmount !== null) {
+        query = query.gte('amount', filters.minAmount)
+      }
+      if (filters.maxAmount !== null) {
+        query = query.lte('amount', filters.maxAmount)
+      }
+
+      // Apply card filter
+      if (filters.cardIds.length > 0) {
+        query = query.in('card_id', filters.cardIds)
+      }
+
+      // Apply source filter
+      if (filters.source === 'email') {
+        query = query.not('raw_email_id', 'is', null)
+      } else if (filters.source === 'manual') {
+        query = query.is('raw_email_id', null)
+      }
+
+      // Apply reviewed status filter
+      if (filters.reviewedStatus !== null) {
+        if (filters.reviewedStatus) {
+          query = query.not('reviewed_by_initials', 'is', null).neq('reviewed_by_initials', '')
+        } else {
+          query = query.or('reviewed_by_initials.is.null,reviewed_by_initials.eq.')
+        }
+      }
+
+      // Apply pagination and ordering
+      const start = page * PURCHASES_PER_PAGE
+      const end = start + PURCHASES_PER_PAGE - 1
+      query = query
+        .order('purchase_date', { ascending: false })
+        .range(start, end)
+
+      const { data, error, count } = await query
+
+      logger.log("📦 Purchases fetched:", data?.length, "items, page:", page, "total count:", count)
       if (error) throw error
-      dispatch(setPurchases(data || []))
+
+      if (append) {
+        dispatch(appendPurchases(data || []))
+      } else {
+        dispatch(setPurchases(data || []))
+      }
+
+      // Update pagination state
+      const hasMoreData = count ? (page + 1) * PURCHASES_PER_PAGE < count : false
+      dispatch(setHasMore(hasMoreData))
+
     } catch (error: any) {
       console.error('Error fetching purchases:', error)
       toast.error('Failed to load purchases')
+      dispatch(setLoadingMore(false))
     }
-  }
+  }, [user, filters, dispatch, supabase])
 
   const fetchEmployees = async () => {
     if (!user) return
@@ -971,19 +1078,22 @@ export default function PurchasesPage() {
         </Table>
       </div>
 
+      {/* Infinite scroll trigger */}
+      <div ref={observerTarget} className="h-4" />
+
+      {/* Loading indicator */}
+      {isLoadingMore && (
+        <div className="flex justify-center py-4">
+          <div className="text-sm text-gray-600">Loading more purchases...</div>
+        </div>
+      )}
+
       {/* Total Purchases Counter */}
       <div className="mt-4 p-4 border-t bg-gray-50 rounded-b-lg">
         <div className="flex items-center justify-between text-sm">
           <span className="font-medium text-gray-700">
-            {filteredPurchases.length !== purchases.length ? (
-              <>
-                Showing {filteredPurchases.length} of {purchases.length} purchases
-              </>
-            ) : (
-              <>
-                Total Purchases: {purchases.length}
-              </>
-            )}
+            Showing {filteredPurchases.length} purchases
+            {!hasMore && filteredPurchases.length > 0 && " (all loaded)"}
           </span>
           {filteredPurchases.length > 0 && (
             <span className="text-gray-600">

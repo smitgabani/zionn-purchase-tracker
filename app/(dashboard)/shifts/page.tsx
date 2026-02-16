@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo } from 'react'
+import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector } from '@/lib/store/hooks'
@@ -81,6 +81,8 @@ interface Employee {
   name: string
 }
 
+const SHIFTS_PER_PAGE = 20
+
 export default function ShiftsPage() {
   const { user } = useAppSelector((state) => state.auth)
   const router = useRouter()
@@ -90,6 +92,12 @@ export default function ShiftsPage() {
   const [cards, setCards] = useState<Card[]>([])
   const [employees, setEmployees] = useState<Employee[]>([])
   const [loading, setLoading] = useState(true)
+
+  // Pagination state for ended shifts
+  const [currentPage, setCurrentPage] = useState(0)
+  const [hasMore, setHasMore] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const observerTarget = useRef<HTMLDivElement>(null)
 
   // Dialog state
   const [isDialogOpen, setIsDialogOpen] = useState(false)
@@ -130,38 +138,135 @@ export default function ShiftsPage() {
     return filtered
   }, [shifts, showOnlyNoId, shiftIdSearch])
 
+  // Initial data fetch
   useEffect(() => {
     if (user) {
-      fetchShifts()
       fetchPurchases()
       fetchCards()
       fetchEmployees()
     }
   }, [user])
 
-  const fetchShifts = async () => {
+  // Fetch shifts when filters change (smart reset)
+  useEffect(() => {
+    if (user) {
+      setCurrentPage(0)
+      setShifts([])
+      fetchShifts(0, false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, showOnlyNoId, shiftIdSearch])
+
+  // Load more handler for infinite scroll
+  const loadMore = useCallback(() => {
+    if (!isLoadingMore && hasMore) {
+      const nextPage = currentPage + 1
+      setCurrentPage(nextPage)
+      fetchShifts(nextPage, true)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPage, hasMore, isLoadingMore])
+
+  // Infinite scroll with IntersectionObserver
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
+          loadMore()
+        }
+      },
+      { threshold: 0.1 }
+    )
+
+    const currentTarget = observerTarget.current
+    if (currentTarget) {
+      observer.observe(currentTarget)
+    }
+
+    return () => {
+      if (currentTarget) {
+        observer.unobserve(currentTarget)
+      }
+    }
+  }, [hasMore, isLoadingMore, loadMore])
+
+  const fetchShifts = useCallback(async (page = 0, append = false) => {
     try {
-      setLoading(true)
-      
-      const { data, error } = await supabase
+      if (!user) return
+
+      if (append) {
+        setIsLoadingMore(true)
+      } else {
+        setLoading(true)
+      }
+
+      // Fetch ongoing shifts (no pagination needed - typically small number)
+      const { data: ongoingData, error: ongoingError } = await supabase
         .from('card_shifts')
         .select(`
           *,
           cards!inner(last_four, nickname, bank_name, admin_user_id),
           employees(name)
         `)
-        .eq('cards.admin_user_id', user?.id)
+        .eq('cards.admin_user_id', user.id)
+        .is('end_time', null)
         .order('start_time', { ascending: false })
 
-      if (error) throw error
-      setShifts(data || [])
+      if (ongoingError) throw ongoingError
+
+      // Build ended shifts query with server-side filters
+      let endedQuery = supabase
+        .from('card_shifts')
+        .select(`
+          *,
+          cards!inner(last_four, nickname, bank_name, admin_user_id),
+          employees(name)
+        `, { count: 'exact' })
+        .eq('cards.admin_user_id', user.id)
+        .not('end_time', 'is', null)
+
+      // Apply shift ID search filter
+      if (shiftIdSearch.trim()) {
+        endedQuery = endedQuery.ilike('shift_id', `%${shiftIdSearch}%`)
+      }
+
+      // Apply "No ID only" filter
+      if (showOnlyNoId) {
+        endedQuery = endedQuery.or('shift_id.is.null,shift_id.eq.')
+      }
+
+      // Apply pagination
+      const start = page * SHIFTS_PER_PAGE
+      const end = start + SHIFTS_PER_PAGE - 1
+      endedQuery = endedQuery
+        .order('start_time', { ascending: false })
+        .range(start, end)
+
+      const { data: endedData, error: endedError, count } = await endedQuery
+
+      if (endedError) throw endedError
+
+      // Combine ongoing and ended shifts
+      const combinedShifts = [...(ongoingData || []), ...(endedData || [])]
+
+      if (append) {
+        setShifts(prev => [...prev, ...(endedData || [])])
+      } else {
+        setShifts(combinedShifts)
+      }
+
+      // Update pagination state
+      const hasMoreData = count ? (page + 1) * SHIFTS_PER_PAGE < count : false
+      setHasMore(hasMoreData)
+
     } catch (error: any) {
       console.error('Error fetching shifts:', error)
       toast.error('Failed to load shifts')
     } finally {
       setLoading(false)
+      setIsLoadingMore(false)
     }
-  }
+  }, [user, showOnlyNoId, shiftIdSearch, supabase])
 
   const fetchPurchases = async () => {
     try {
@@ -898,6 +1003,23 @@ export default function ShiftsPage() {
                   </TableBody>
                 </Table>
               </div>
+
+              {/* Infinite scroll trigger */}
+              <div ref={observerTarget} className="h-4" />
+
+              {/* Loading indicator */}
+              {isLoadingMore && (
+                <div className="flex justify-center py-4">
+                  <div className="text-sm text-gray-600">Loading more shifts...</div>
+                </div>
+              )}
+
+              {/* Footer info */}
+              {!hasMore && endedShifts.length > 0 && (
+                <div className="text-center py-4 text-sm text-gray-600">
+                  All shifts loaded ({endedShifts.length} total)
+                </div>
+              )}
             </div>
           )}
 

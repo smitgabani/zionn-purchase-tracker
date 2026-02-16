@@ -29,3 +29,31 @@ export function parseUTCDate(dateString: string): Date {
 
   return new Date(normalized)
 }
+
+/**
+ * Check if a purchase falls within a shift's time range
+ * 
+ * @param purchase - Purchase object with purchase_date (TIMESTAMPTZ) and card_id
+ * @param shift - Shift object with start_time, end_time, and card_id
+ * @returns true if purchase was made during the shift, false otherwise
+ */
+export function isPurchaseInShift(
+  purchase: { purchase_date: string; card_id: string },
+  shift: { start_time: string; end_time: string | null; card_id: string }
+): boolean {
+  // Must be same card
+  if (purchase.card_id !== shift.card_id) return false
+
+  // Parse the purchase date (which is actually a TIMESTAMPTZ with time info)
+  const purchaseTime = parseUTCDate(purchase.purchase_date)
+  const shiftStart = parseUTCDate(shift.start_time)
+  
+  // If shift is ongoing (no end_time), check if purchase is after start
+  if (!shift.end_time) {
+    return purchaseTime >= shiftStart
+  }
+  
+  // If shift has ended, check if purchase is between start and end
+  const shiftEnd = parseUTCDate(shift.end_time)
+  return purchaseTime >= shiftStart && purchaseTime <= shiftEnd
+}

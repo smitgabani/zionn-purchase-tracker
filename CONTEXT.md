@@ -96,29 +96,39 @@
 ### Current Functionality
 
 **Purchases Page**
+- Infinite scroll pagination (100 items per batch)
+- Server-side filtering for performance
 - Sortable table by purchase_date
 - Inline editable order numbers (6 digits)
 - Inline editable initials (10 chars max)
 - Card filter, date range filter
 - Source filter (Email/Manual)
 - Reviewed status filter (based on initials presence)
-- CSV export functionality
+- Selection mode for bulk operations
+- Bulk employee assignment
+- CSV export (selected, filtered, or all)
+- Smart reset: filters reload from page 1
 - No employee or source columns
 
 **Shifts Page**
+- Infinite scroll pagination (20 items per batch)
+- Server-side filtering for ended shifts
 - Track card assignments to employees
 - Calculate purchases and spending per shift
 - Click shift to filter purchases
 - Ongoing shifts show current totals
 - Duration tracking
+- Shift ID search
+- "No ID only" filter
 
-**Parsing Rules Page**
+**Parsing Rules Page** (Hidden - Developer Tools)
 - Create/edit/delete parsing rules
 - Test rules with sample text
 - Priority ordering
 - Card extraction patterns for various formats
+- Accessible via sidebar Developer Tools section
 
-**Tools Page**
+**Tools Page** (Hidden - Developer Tools)
 - Quick Parse (normal operation)
 - Smart Full Parse (re-parse orphaned emails)
 - Full Re-parse with duplicate checking
@@ -128,12 +138,14 @@
 - Integrity check
 - Test card extraction
 - Delete all purchases
+- Accessible via sidebar Developer Tools section
 
-**Emails Page**
+**Emails Page** (Hidden - Developer Tools)
 - View synced emails
 - Parse status indicators
 - Email details modal
 - Parsed/Unparsed/Failed counts
+- Accessible via sidebar Developer Tools section
 
 ## 🔧 Technical Details
 
@@ -168,6 +180,20 @@
 - Use purchase_date for time comparison
 - Ongoing shifts use current time as end_time
 
+**Pagination (Infinite Scroll)**
+- Purchases: 100 items per batch using `.range()`
+- Shifts: 20 ended shifts per batch
+- IntersectionObserver for auto-loading
+- Server-side filtering applied before pagination
+- Smart reset: filters clear data and reload from page 1
+- Redux state tracks: currentPage, hasMore, isLoadingMore
+
+**Soft Deletes**
+- Uses `deleted_at` TIMESTAMPTZ column
+- All queries filter `.is('deleted_at', null)`
+- Prevents permanent data loss
+- Records can be restored by setting `deleted_at = NULL`
+
 ## 🗂️ File Structure
 
 ```
@@ -187,7 +213,7 @@ app/
 
 components/
   purchases/PurchaseFilters.tsx - Advanced filtering
-  Sidebar.tsx - Navigation
+  Sidebar.tsx - Navigation with collapsible Developer Tools
 
 lib/
   parser/engine.ts - Email parsing logic
@@ -202,6 +228,7 @@ supabase/migrations/
   20260208_card_shifts.sql - Shifts table
   20260209_add_order_number.sql - Order number field
   20260209_add_initials_field.sql - Replace is_reviewed with initials
+  20260211_add_soft_deletes.sql - Soft delete support (deleted_at columns)
 ```
 
 ## 🔐 Security
@@ -269,6 +296,15 @@ GOOGLE_REDIRECT_URI=
 
 ## 🔄 Recent Major Changes
 
+### Feb 11, 2026
+- ✅ Added infinite scroll pagination to purchases (100/page) and shifts (20/page)
+- ✅ Moved all filtering to server-side Supabase queries for performance
+- ✅ Implemented soft deletes with deleted_at columns
+- ✅ Hidden Emails, Parsing Rules, and Tools in collapsible Developer Tools section
+- ✅ Added bulk operations to purchases (selection mode, bulk assign)
+- ✅ Enhanced CSV export with selected/filtered/all options
+- ✅ Fixed email view button to open modal instead of new tab
+
 ### Feb 8-9, 2026
 - ✅ Removed employee column from purchases table
 - ✅ Removed source column from purchases table
@@ -321,6 +357,6 @@ GOOGLE_REDIRECT_URI=
 
 ---
 
-**Last Updated:** Feb 9, 2026
-**Current Status:** ✅ Fully Functional
+**Last Updated:** Feb 11, 2026
+**Current Status:** ✅ Fully Functional with Pagination
 **Build Status:** ✅ Production Ready

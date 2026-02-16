@@ -179,6 +179,7 @@ export default function EmailsPage() {
                   </TableCell>
                   <TableCell className="text-right">
                     <Button
+                      type="button"
                       variant="ghost"
                       size="sm"
                       onClick={() => handleViewEmail(email)}

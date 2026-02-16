@@ -7,12 +7,19 @@ interface PurchasesState {
   purchases: Purchase[]
   loading: boolean
   error: string | null
+  // Pagination state
+  currentPage: number
+  hasMore: boolean
+  isLoadingMore: boolean
 }
 
 const initialState: PurchasesState = {
   purchases: [],
   loading: false,
   error: null,
+  currentPage: 0,
+  hasMore: true,
+  isLoadingMore: false,
 }
 
 const purchasesSlice = createSlice({
@@ -24,8 +31,17 @@ const purchasesSlice = createSlice({
       state.loading = false
       state.error = null
     },
+    appendPurchases: (state, action: PayloadAction<Purchase[]>) => {
+      state.purchases.push(...action.payload)
+      state.isLoadingMore = false
+    },
+    resetPurchases: (state) => {
+      state.purchases = []
+      state.currentPage = 0
+      state.hasMore = true
+    },
     addPurchase: (state, action: PayloadAction<Purchase>) => {
-      state.purchases.push(action.payload)
+      state.purchases.unshift(action.payload) // Add to beginning
     },
     updatePurchase: (state, action: PayloadAction<Purchase>) => {
       const index = state.purchases.findIndex(p => p.id === action.payload.id)
@@ -39,12 +55,34 @@ const purchasesSlice = createSlice({
     setLoading: (state, action: PayloadAction<boolean>) => {
       state.loading = action.payload
     },
+    setLoadingMore: (state, action: PayloadAction<boolean>) => {
+      state.isLoadingMore = action.payload
+    },
+    setHasMore: (state, action: PayloadAction<boolean>) => {
+      state.hasMore = action.payload
+    },
+    incrementPage: (state) => {
+      state.currentPage += 1
+    },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload
       state.loading = false
+      state.isLoadingMore = false
     },
   },
 })
 
-export const { setPurchases, addPurchase, updatePurchase, deletePurchase, setLoading, setError } = purchasesSlice.actions
+export const {
+  setPurchases,
+  appendPurchases,
+  resetPurchases,
+  addPurchase,
+  updatePurchase,
+  deletePurchase,
+  setLoading,
+  setLoadingMore,
+  setHasMore,
+  incrementPage,
+  setError
+} = purchasesSlice.actions
 export default purchasesSlice.reducer

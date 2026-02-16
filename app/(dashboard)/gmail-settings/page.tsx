@@ -44,6 +44,7 @@ export default function GmailSettingsPage() {
   const [loading, setLoading] = useState(false)
   const [connecting, setConnecting] = useState(false)
   const [syncing, setSyncing] = useState(false)
+  const [completeSyncing, setCompleteSyncing] = useState(false)
 
   useEffect(() => {
     // Check for OAuth callback results
@@ -53,14 +54,16 @@ export default function GmailSettingsPage() {
     if (success === 'true') {
       toast.success('Gmail connected successfully!')
       fetchSyncState()
+      fetchLabels()
     } else if (error) {
-      toast.error(`Connection failed: ${error}`)
+      toast.error(`Failed to connect Gmail: ${error}`)
     }
   }, [searchParams])
 
   useEffect(() => {
     if (user) {
       fetchSyncState()
+      fetchLabels()
     }
   }, [user])
 
@@ -68,22 +71,17 @@ export default function GmailSettingsPage() {
     try {
       const { data, error } = await supabase
         .from('gmail_sync_state')
-        .select('is_connected, label_id, label_name, last_sync_at, token_expiry')
-        .maybeSingle()
+        .select('*')
+        .eq('admin_user_id', user?.id)
+        .single()
 
-      if (error) {
-        console.error('Error fetching sync state:', error)
-        return
+      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
+        throw error
       }
 
-      if (data) {
-        setSyncState(data)
-        setSelectedLabelId(data.label_id || '')
-        
-        // If connected, fetch labels
-        if (data.is_connected) {
-          fetchLabels()
-        }
+      setSyncState(data || null)
+      if (data?.label_id) {
+        setSelectedLabelId(data.label_id)
       }
     } catch (error) {
       console.error('Error fetching sync state:', error)
@@ -92,7 +90,6 @@ export default function GmailSettingsPage() {
 
   const fetchLabels = async () => {
     try {
-      setLoading(true)
       const response = await fetch('/api/gmail/labels')
       const data = await response.json()
 
@@ -100,35 +97,22 @@ export default function GmailSettingsPage() {
         throw new Error(data.error || 'Failed to fetch labels')
       }
 
-      setLabels(data.labels)
+      setLabels(data.labels || [])
     } catch (error: any) {
-      toast.error(error.message || 'Failed to fetch Gmail labels')
-    } finally {
-      setLoading(false)
+      console.error('Error fetching labels:', error)
+      // Don't show error toast if not connected
+      if (syncState?.is_connected) {
+        toast.error(error.message || 'Failed to fetch labels')
+      }
     }
   }
 
   const handleConnect = async () => {
-    try {
-      setConnecting(true)
-      const response = await fetch('/api/auth/google')
-      const data = await response.json()
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to generate auth URL')
-      }
-
-      // Redirect to Google OAuth
-      window.location.href = data.authUrl
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to connect Gmail')
-      setConnecting(false)
-    }
+    setConnecting(true)
+    window.location.href = '/api/auth/google'
   }
 
   const handleDisconnect = async () => {
-    if (!confirm('Are you sure you want to disconnect Gmail?')) return
-
     try {
       setLoading(true)
       const { error } = await supabase
@@ -138,20 +122,15 @@ export default function GmailSettingsPage() {
           access_token: null,
           refresh_token: null,
           token_expiry: null,
-          label_id: null,
-          label_name: null,
         })
         .eq('admin_user_id', user?.id)
 
       if (error) throw error
 
-      setSyncState(null)
-      setLabels([])
-      setSelectedLabelId('')
-      toast.success('Gmail disconnected successfully')
-    } catch (error) {
-      toast.error('Failed to disconnect Gmail')
-      console.error(error)
+      toast.success('Gmail disconnected')
+      await fetchSyncState()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to disconnect')
     } finally {
       setLoading(false)
     }
@@ -171,17 +150,16 @@ export default function GmailSettingsPage() {
         .from('gmail_sync_state')
         .update({
           label_id: selectedLabelId,
-          label_name: selectedLabel?.name || '',
+          label_name: selectedLabel?.name,
         })
         .eq('admin_user_id', user?.id)
 
       if (error) throw error
 
-      await fetchSyncState()
       toast.success('Label saved successfully')
-    } catch (error) {
-      toast.error('Failed to save label')
-      console.error(error)
+      await fetchSyncState()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to save label')
     } finally {
       setLoading(false)
     }
@@ -205,12 +183,43 @@ export default function GmailSettingsPage() {
         throw new Error(data.error || 'Failed to sync emails')
       }
 
-      toast.success(`Synced ${data.emailsSynced} emails successfully`)
+      toast.success(`Synced ${data.synced} emails successfully`)
       await fetchSyncState()
     } catch (error: any) {
       toast.error(error.message || 'Failed to sync emails')
     } finally {
       setSyncing(false)
+    }
+  }
+
+  const handleCompleteSync = async () => {
+    if (!syncState?.label_id) {
+      toast.error('Please select a label first')
+      return
+    }
+
+    try {
+      setCompleteSyncing(true)
+      toast.info('Starting complete sync... This may take a while for large inboxes.')
+      
+      const response = await fetch('/api/gmail/sync-complete', {
+        method: 'POST',
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to complete sync')
+      }
+
+      toast.success(
+        `Complete sync finished! Total: ${data.total}, Synced: ${data.synced}, Skipped: ${data.skipped}, Failed: ${data.failed}`
+      )
+      await fetchSyncState()
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to complete sync')
+    } finally {
+      setCompleteSyncing(false)
     }
   }
 
@@ -359,7 +368,7 @@ export default function GmailSettingsPage() {
             <CardHeader>
               <CardTitle>Email Sync</CardTitle>
               <CardDescription>
-                Manually trigger email sync or view sync history
+                Quick Sync fetches the latest 50 emails. Complete Sync fetches ALL emails from the label.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -373,14 +382,25 @@ export default function GmailSettingsPage() {
                     <p className="text-sm text-gray-600">Never synced</p>
                   )}
                 </div>
-                <Button
-                  onClick={handleManualSync}
-                  disabled={syncing}
-                  className="gap-2"
-                >
-                  <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
-                  {syncing ? 'Syncing...' : 'Sync Now'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleManualSync}
+                    disabled={syncing || completeSyncing}
+                    className="gap-2"
+                    variant="outline"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${syncing ? 'animate-spin' : ''}`} />
+                    {syncing ? 'Syncing...' : 'Quick Sync (50)'}
+                  </Button>
+                  <Button
+                    onClick={handleCompleteSync}
+                    disabled={syncing || completeSyncing}
+                    className="gap-2"
+                  >
+                    <RefreshCw className={`h-4 w-4 ${completeSyncing ? 'animate-spin' : ''}`} />
+                    {completeSyncing ? 'Syncing All...' : 'Complete Sync (All)'}
+                  </Button>
+                </div>
               </div>
             </CardContent>
           </Card>

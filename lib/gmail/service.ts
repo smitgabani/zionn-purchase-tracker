@@ -77,6 +77,30 @@ export class GmailService {
     }
   }
 
+  // Get ALL messages by label (with pagination)
+  async getAllMessagesByLabel(labelId: string): Promise<GmailMessage[]> {
+    try {
+      const allMessages: GmailMessage[] = []
+      let pageToken: string | undefined = undefined
+      let pageCount = 0
+
+      do {
+        const response = await this.getMessagesByLabel(labelId, 100, pageToken)
+        allMessages.push(...response.messages)
+        pageToken = response.nextPageToken
+        pageCount++
+        
+        console.log(`Fetched page ${pageCount}, total messages so far: ${allMessages.length}`)
+      } while (pageToken)
+
+      console.log(`Complete sync: fetched ${allMessages.length} messages across ${pageCount} pages`)
+      return allMessages
+    } catch (error) {
+      console.error('Error fetching all messages:', error)
+      throw new Error('Failed to fetch all Gmail messages')
+    }
+  }
+
   // Get message details
   async getMessageDetails(messageId: string): Promise<GmailMessageDetails> {
     try {

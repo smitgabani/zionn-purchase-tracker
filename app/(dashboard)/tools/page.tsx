@@ -159,6 +159,15 @@ export default function ToolsPage() {
           method: 'POST',
         },
         {
+          id: 'sync-gmail-complete',
+          name: 'Complete Gmail Sync',
+          description: 'Fetch ALL emails from Gmail label (uses pagination)',
+          endpoint: '/api/gmail/sync-complete',
+          icon: RefreshCw,
+          variant: 'default',
+          method: 'POST',
+        },
+        {
           id: 'reset-emails',
           name: 'Reset All Emails',
           description: 'Mark all emails as unparsed (useful after changing parsing rules)',

@@ -1,5 +1,6 @@
 'use client'
 
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -82,19 +83,25 @@ export function OngoingShiftCard({
 
       {/* Purchase List */}
       {purchases.length > 0 ? (
+        <TooltipProvider>
         <div className="space-y-1">
           {displayedPurchases.map((purchase) => {
             const time = new Date(purchase.purchase_date).toLocaleTimeString('en-US', {
               hour: '2-digit',
               minute: '2-digit',
             })
-
             return (
-              <button
-                key={purchase.id}
-                onClick={() => onPurchaseClick(purchase)}
-                className="w-full text-left p-2 rounded hover:bg-gray-50 transition-colors flex items-center justify-between group"
-              >
+
+              <Tooltip delayDuration={200} key={purchase.id}>
+                <TooltipTrigger asChild>
+                  <button
+                    onClick={() => onPurchaseClick(purchase)}
+                    className={`w-full text-left p-2 rounded transition-colors flex items-center justify-between group ${
+                      !purchase.order_number || purchase.order_number === ''
+                        ? 'bg-yellow-50 hover:bg-yellow-100 border border-yellow-200'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
                 <div className="flex items-center gap-3 min-w-0 flex-1">
                   <span className="text-xs text-gray-500 font-mono flex-shrink-0">
                     {time}
@@ -106,7 +113,39 @@ export function OngoingShiftCard({
                 <span className="text-sm font-semibold text-gray-900 flex-shrink-0 ml-2">
                   ${purchase.amount.toFixed(2)}
                 </span>
-              </button>
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="right" className="w-80 p-4">
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <p className="font-semibold text-base">{purchase.merchant || 'Unknown Merchant'}</p>
+                        <p className="text-sm text-muted-foreground mt-1">{purchase.description || 'No description'}</p>
+                      </div>
+                      <Badge variant="outline" className="ml-2">{purchase.source === 'email' ? 'Auto' : 'Manual'}</Badge>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Amount</p>
+                        <p className="font-semibold text-green-600">${purchase.amount.toFixed(2)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Date & Time</p>
+                        <p className="font-medium">{new Date(purchase.purchase_date).toLocaleString()}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Order Number</p>
+                        <p className="font-medium">{purchase.order_number || '—'}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Initials</p>
+                        <p className="font-medium">{purchase.reviewed_by_initials || '—'}</p>
+                      </div>
+                    </div>
+                  </div>
+                </TooltipContent>
+              </Tooltip>
             )
           })}
 
@@ -132,6 +171,7 @@ export function OngoingShiftCard({
             </Button>
           )}
         </div>
+        </TooltipProvider>
       ) : (
         <div className="text-center py-4 text-sm text-gray-500">
           No purchases yet
