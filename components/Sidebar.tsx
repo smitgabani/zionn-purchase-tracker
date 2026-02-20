@@ -15,6 +15,7 @@ import {
   ChevronDown,
   ChevronRight,
   Store,
+  BarChart3,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 
@@ -25,6 +26,7 @@ const navigation = [
   { name: 'Employees', href: '/employees', icon: Users },
   { name: 'Cards', href: '/cards', icon: CreditCard },
   { name: 'Shifts', href: '/shifts', icon: Clock },
+  { name: 'Reports', href: '/reports/charts', icon: BarChart3 },
   { name: 'Gmail Settings', href: '/gmail-settings', icon: Settings },
 ]
 
@@ -59,7 +61,7 @@ export default function Sidebar({ onClose }: SidebarProps) {
       </div>
       <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-4">
         {navigation.map((item) => {
-          const isActive = pathname === item.href
+          const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`)
           return (
             <Link
               key={item.name}

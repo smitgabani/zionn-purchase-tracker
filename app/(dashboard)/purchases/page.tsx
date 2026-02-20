@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useMemo, useRef, useCallback } from 'react'
+import { useEffect, useState, useMemo, useCallback } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { useAppSelector, useAppDispatch } from '@/lib/store/hooks'
@@ -13,10 +13,11 @@ import {
   deletePurchase,
   setLoadingMore,
   setHasMore,
-  incrementPage
+  setPage
 } from '@/lib/store/slices/purchasesSlice'
 import { setEmployees } from '@/lib/store/slices/employeesSlice'
 import { setCards } from '@/lib/store/slices/cardsSlice'
+import { setMerchants } from '@/lib/store/slices/merchantsSlice'
 import { setCategories } from '@/lib/store/slices/categoriesSlice'
 import { logger } from '@/lib/logger'
 import { validateOrError } from '@/lib/validation/client'
@@ -74,13 +75,11 @@ export default function PurchasesPage() {
   const { purchases, currentPage, hasMore, isLoadingMore } = useAppSelector((state) => state.purchases)
   const { employees } = useAppSelector((state) => state.employees)
   const { cards } = useAppSelector((state) => state.cards)
+  const { merchants } = useAppSelector((state) => state.merchants)
   const { categories } = useAppSelector((state) => state.categories)
   const dispatch = useAppDispatch()
   const searchParams = useSearchParams()
   const supabase = createClient()
-
-  // Infinite scroll observer ref
-  const observerTarget = useRef<HTMLDivElement>(null)
 
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
@@ -115,8 +114,10 @@ export default function PurchasesPage() {
     source: null,
     reviewedStatus: null,
     searchQuery: '',
+    verifiedMerchants: [],
   // Apply client-side filtering (safety net in addition to server-side filtering)
   })
+  const [filtersReady, setFiltersReady] = useState(false)
   const filteredPurchases = useMemo(() => {
     let result = purchases
 
@@ -131,10 +132,10 @@ export default function PurchasesPage() {
 
     // Date range filters
     if (filters.startDate) {
-      result = result.filter(p => new Date(p.purchase_date) >= filters.startDate!)
+      result = result.filter(p => parseUTCDate(p.purchase_date) >= filters.startDate!)
     }
     if (filters.endDate) {
-      result = result.filter(p => new Date(p.purchase_date) <= filters.endDate!)
+      result = result.filter(p => parseUTCDate(p.purchase_date) <= filters.endDate!)
     }
 
     // Amount range filters
@@ -169,6 +170,21 @@ export default function PurchasesPage() {
     return result
   }, [purchases, filters])
 
+  // Calculate if there are more purchases to load (server-side pagination)
+  const serverHasMore = useMemo(() => {
+    return hasMore
+  }, [hasMore])
+
+  // Override hasMore if client-side filtering reduces results
+  const effectiveHasMore = useMemo(() => {
+    // If client-side filtering shows fewer results than server provided,
+    // but we've loaded all server data, there's no more to load
+    if (filteredPurchases.length === 0 && purchases.length > 0) {
+      return false  // Client filters eliminated all results
+    }
+    return serverHasMore
+  }, [filteredPurchases.length, purchases.length, serverHasMore])
+
   // Calculate selection summary
   const selectionSummary = useMemo(() => {
     const selected = filteredPurchases.filter(p => selectedPurchases.has(p.id))
@@ -187,36 +203,17 @@ export default function PurchasesPage() {
     fetchEmployees()
     fetchCards()
     fetchCategories()
+    fetchMerchants()
   }, [user])
 
   // Fetch purchases when user or filters change
   useEffect(() => {
-    if (user) {
+    if (user && filtersReady) {
       dispatch(resetPurchases())
       fetchPurchases(0, false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, filters])
-
-  // Infinite scroll observer
-  useEffect(() => {
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && hasMore && !isLoadingMore) {
-          dispatch(incrementPage())
-          fetchPurchases(currentPage + 1, true)
-        }
-      },
-      { threshold: 1.0 }
-    )
-
-    if (observerTarget.current) {
-      observer.observe(observerTarget.current)
-    }
-
-    return () => observer.disconnect()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hasMore, isLoadingMore, currentPage])
+  }, [user, filters, filtersReady])
   // Read URL parameters and apply filters from shift navigation
   useEffect(() => {
     const cardId = searchParams.get('cardId')
@@ -233,10 +230,12 @@ export default function PurchasesPage() {
       setFilters(prev => ({
         ...prev,
         cardIds: cardId ? [cardId] : [],
-        startDate: startDate ? new Date(startDate) : null,
-        endDate: endDate ? new Date(endDate) : null,
+        startDate: startDate ? parseUTCDate(startDate) : null,
+        endDate: endDate ? parseUTCDate(endDate) : null,
       }))
     }
+
+    setFiltersReady(true)
   }, [searchParams])
 
   // Auto-select all filtered purchases when coming from shift
@@ -297,6 +296,14 @@ export default function PurchasesPage() {
         query = query.is('raw_email_id', null)
       }
 
+      // Apply verified merchants filter
+      if (filters.verifiedMerchants.length > 0) {
+        const merchantFilters = filters.verifiedMerchants
+          .map(name => `merchant.ilike.${name.replace(/%/g, '\%')}`)
+          .join(',')
+        query = query.or(merchantFilters)
+      }
+
       // Apply reviewed status filter
       if (filters.reviewedStatus !== null) {
         if (filters.reviewedStatus) {
@@ -316,21 +323,49 @@ export default function PurchasesPage() {
       const { data, error, count } = await query
 
       logger.log("📦 Purchases fetched:", data?.length, "items, page:", page, "total count:", count)
-      if (error) throw error
+      if (error) {
+        // PostgREST returns 416 when range is outside result set
+        if (error.status === 416) {
+          dispatch(setHasMore(false))
+          if (append) {
+            dispatch(setLoadingMore(false))
+          }
+          return
+        }
+        throw error
+      }
 
+      const rows = data || []
       if (append) {
-        dispatch(appendPurchases(data || []))
+        dispatch(appendPurchases(rows))
       } else {
-        dispatch(setPurchases(data || []))
+        dispatch(setPurchases(rows))
       }
 
       // Update pagination state
-      const hasMoreData = count ? (page + 1) * PURCHASES_PER_PAGE < count : false
+      const hasMoreData = count !== null && count !== undefined
+        ? (page + 1) * PURCHASES_PER_PAGE < count
+        : rows.length === PURCHASES_PER_PAGE
       dispatch(setHasMore(hasMoreData))
+
+      // If we got fewer rows than requested, stop paging
+      if (rows.length < PURCHASES_PER_PAGE) {
+        dispatch(setHasMore(false))
+      }
+
+      // Clear loading state after successful fetch
+      if (append) {
+        dispatch(setLoadingMore(false))
+      }
 
     } catch (error: any) {
       console.error('Error fetching purchases:', error)
       toast.error('Failed to load purchases')
+      dispatch(setLoadingMore(false))
+    }
+
+    // Ensure loading state cleared
+    if (append) {
       dispatch(setLoadingMore(false))
     }
   }, [user, filters, dispatch, supabase])
@@ -366,6 +401,24 @@ export default function PurchasesPage() {
       dispatch(setCards(data || []))
     } catch (error: any) {
       console.error('Error fetching cards:', error)
+    }
+  }
+
+  const fetchMerchants = async () => {
+    if (!user) return
+
+    try {
+      const { data, error } = await supabase
+        .from('merchants')
+        .select('*')
+        .eq('admin_user_id', user.id)
+        .is('deleted_at', null)
+        .order('name')
+
+      if (error) throw error
+      dispatch(setMerchants(data || []))
+    } catch (error: any) {
+      console.error('Error fetching merchants:', error)
     }
   }
 
@@ -650,6 +703,25 @@ export default function PurchasesPage() {
     toast.success(`Exported ${filteredPurchases.length} purchases`)
   }
 
+  const handlePageChange = (nextPage: number) => {
+    if (nextPage < 0) return
+    dispatch(setPage(nextPage))
+    fetchPurchases(nextPage, false)
+  }
+
+  const handleNextPage = () => {
+    if (effectiveHasMore && !isLoadingMore) {
+      handlePageChange(currentPage + 1)
+    }
+  }
+
+  const handlePrevPage = () => {
+    if (currentPage > 0 && !isLoadingMore) {
+      handlePageChange(currentPage - 1)
+    }
+  }
+
+
   const handleExportAll = () => {
     if (purchases.length === 0) {
       toast.error('No purchases to export')
@@ -891,6 +963,7 @@ export default function PurchasesPage() {
           filters={filters}
           onFilterChange={setFilters}
           cards={cards}
+          merchants={merchants}
         />
       </div>
 
@@ -1078,11 +1151,32 @@ export default function PurchasesPage() {
         </Table>
       </div>
 
-      {/* Infinite scroll trigger */}
-      <div ref={observerTarget} className="h-4" />
+
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between py-4">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handlePrevPage}
+          disabled={currentPage === 0 || isLoadingMore}
+        >
+          Previous
+        </Button>
+        <div className="text-sm text-gray-600">
+          Page {currentPage + 1}
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleNextPage}
+          disabled={!effectiveHasMore || isLoadingMore}
+        >
+          Next
+        </Button>
+      </div>
 
       {/* Loading indicator */}
-      {isLoadingMore && (
+      {isLoadingMore && effectiveHasMore && (
         <div className="flex justify-center py-4">
           <div className="text-sm text-gray-600">Loading more purchases...</div>
         </div>

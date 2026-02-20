@@ -39,6 +39,7 @@ const purchasesSlice = createSlice({
       state.purchases = []
       state.currentPage = 0
       state.hasMore = true
+      state.isLoadingMore = false
     },
     addPurchase: (state, action: PayloadAction<Purchase>) => {
       state.purchases.unshift(action.payload) // Add to beginning
@@ -64,6 +65,9 @@ const purchasesSlice = createSlice({
     incrementPage: (state) => {
       state.currentPage += 1
     },
+    setPage: (state, action: PayloadAction<number>) => {
+      state.currentPage = action.payload
+    },
     setError: (state, action: PayloadAction<string | null>) => {
       state.error = action.payload
       state.loading = false
@@ -83,6 +87,7 @@ export const {
   setLoadingMore,
   setHasMore,
   incrementPage,
+  setPage,
   setError
 } = purchasesSlice.actions
 export default purchasesSlice.reducer

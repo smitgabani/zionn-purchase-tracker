@@ -36,6 +36,7 @@ import { Clock, Trash2, DollarSign, ShoppingCart, Plus, StopCircle, Download, Se
 import { format } from 'date-fns'
 import { toast } from 'sonner'
 import { convertToCSV, downloadCSV, formatDateForExport, formatCurrencyForExport, calculateDurationForExport } from '@/lib/utils/export'
+import { parseUTCDate } from '@/lib/utils/date'
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -141,11 +142,17 @@ export default function ShiftsPage() {
   // Initial data fetch
   useEffect(() => {
     if (user) {
-      fetchPurchases()
       fetchCards()
       fetchEmployees()
     }
   }, [user])
+
+
+  useEffect(() => {
+    if (user) {
+      fetchPurchasesForShifts(shifts)
+    }
+  }, [user, shifts])
 
   // Fetch shifts when filters change (smart reset)
   useEffect(() => {
@@ -268,12 +275,31 @@ export default function ShiftsPage() {
     }
   }, [user, showOnlyNoId, shiftIdSearch, supabase])
 
-  const fetchPurchases = async () => {
+  const fetchPurchasesForShifts = async (shiftList: CardShift[]) => {
+    if (!user) return
+    if (shiftList.length === 0) {
+      setPurchases([])
+      return
+    }
+
+    const cardIds = Array.from(new Set(shiftList.map((s) => s.card_id)))
+    const startTimes = shiftList.map((s) => parseUTCDate(s.start_time).toISOString())
+    const endTimes = shiftList.map((s) =>
+      s.end_time ? parseUTCDate(s.end_time).toISOString() : new Date().toISOString()
+    )
+    const minStart = startTimes.reduce((min, value) => (value < min ? value : min), startTimes[0])
+    const maxEnd = endTimes.reduce((max, value) => (value > max ? value : max), endTimes[0])
+
     try {
       const { data, error } = await supabase
         .from('purchases')
         .select('id, card_id, employee_id, amount, purchase_date')
-        .eq('admin_user_id', user?.id)
+        .eq('admin_user_id', user.id)
+        .is('deleted_at', null)
+        .in('card_id', cardIds)
+        .gte('purchase_date', minStart)
+        .lte('purchase_date', maxEnd)
+        .order('purchase_date', { ascending: false })
 
       if (error) throw error
       setPurchases(data || [])
@@ -327,9 +353,9 @@ export default function ShiftsPage() {
           return false
         }
 
-        const purchaseTime = new Date(purchase.purchase_date)
-        const startTime = new Date(shift.start_time)
-        const endTime = shift.end_time ? new Date(shift.end_time) : new Date()
+        const purchaseTime = parseUTCDate(purchase.purchase_date)
+        const startTime = parseUTCDate(shift.start_time)
+        const endTime = shift.end_time ? parseUTCDate(shift.end_time) : parseUTCDate(new Date().toISOString())
 
         // Purchase must be within shift time range
         return purchaseTime >= startTime && purchaseTime <= endTime

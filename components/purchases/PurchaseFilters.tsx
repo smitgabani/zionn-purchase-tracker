@@ -18,15 +18,17 @@ export interface PurchaseFilterValues {
   source: 'email' | 'manual' | null
   reviewedStatus: boolean | null
   searchQuery: string
+  verifiedMerchants: string[]
 }
 
 interface PurchaseFiltersProps {
   filters: PurchaseFilterValues
   onFilterChange: (filters: PurchaseFilterValues) => void
   cards: Array<{ id: string; last_four: string }>
+  merchants: Array<{ id: string; name: string }>
 }
 
-export function PurchaseFilters({ filters, onFilterChange, cards }: PurchaseFiltersProps) {
+export function PurchaseFilters({ filters, onFilterChange, cards, merchants }: PurchaseFiltersProps) {
   const [isExpanded, setIsExpanded] = useState(false)
 
   const updateFilter = <K extends keyof PurchaseFilterValues>(
@@ -46,6 +48,7 @@ export function PurchaseFilters({ filters, onFilterChange, cards }: PurchaseFilt
       source: null,
       reviewedStatus: null,
       searchQuery: '',
+      verifiedMerchants: [],
     })
   }
 
@@ -59,7 +62,15 @@ export function PurchaseFilters({ filters, onFilterChange, cards }: PurchaseFilt
     if (filters.source !== null) count++
     if (filters.reviewedStatus !== null) count++
     if (filters.searchQuery) count++
+    if (filters.verifiedMerchants.length > 0) count++
     return count
+  }
+
+  const toggleVerifiedMerchant = (merchantName: string) => {
+    const newSelected = filters.verifiedMerchants.includes(merchantName)
+      ? filters.verifiedMerchants.filter(name => name !== merchantName)
+      : [...filters.verifiedMerchants, merchantName]
+    updateFilter('verifiedMerchants', newSelected)
   }
 
   const toggleCard = (cardId: string) => {
@@ -244,7 +255,29 @@ export function PurchaseFilters({ filters, onFilterChange, cards }: PurchaseFilt
             </div>
           </div>
 
-          {/* Reviewed Status */}
+                    {/* Verified Merchants */}
+          <div className="space-y-2">
+            <Label>Verified Merchants</Label>
+            <div className="border rounded-md p-2 max-h-40 overflow-y-auto">
+              {merchants.length === 0 ? (
+                <p className="text-sm text-gray-500">No verified merchants</p>
+              ) : (
+                merchants.map(merchant => (
+                  <label key={merchant.id} className="flex items-center gap-2 cursor-pointer hover:bg-gray-50 p-1 rounded">
+                    <input
+                      type="checkbox"
+                      checked={filters.verifiedMerchants.includes(merchant.name)}
+                      onChange={() => toggleVerifiedMerchant(merchant.name)}
+                      className="rounded"
+                    />
+                    <span className="text-sm">{merchant.name}</span>
+                  </label>
+                ))
+              )}
+            </div>
+          </div>
+
+{/* Reviewed Status */}
           <div className="space-y-2">
             <Label>Reviewed Status</Label>
             <div className="flex gap-2">
