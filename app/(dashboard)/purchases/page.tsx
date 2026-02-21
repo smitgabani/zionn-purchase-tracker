@@ -325,7 +325,8 @@ export default function PurchasesPage() {
       logger.log("📦 Purchases fetched:", data?.length, "items, page:", page, "total count:", count)
       if (error) {
         // PostgREST returns 416 when range is outside result set
-        if (error.status === 416) {
+        const errorStatus = 'status' in error ? (error as { status?: number }).status : undefined
+        if (errorStatus === 416) {
           dispatch(setHasMore(false))
           if (append) {
             dispatch(setLoadingMore(false))
