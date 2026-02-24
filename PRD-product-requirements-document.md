@@ -9,7 +9,11 @@
 
 ## Executive Summary
 
-Purchase Parser is an automated expense tracking system designed for restaurant/retail businesses to monitor employee purchases during work shifts. The system automatically parses receipt emails from credit card companies, extracts purchase details, and associates them with employee shifts for real-time expense monitoring.
+Purchase Tracker is an automated expense tracking system designed for technology-driven on-demand businesses to monitor employee(we prefer to call them "Drivers") purchases during work shifts. The system automatically parses receipt emails from credit card companies, extracts purchase details, and associates them with employee shifts for real-time expense monitoring.
+
+The business operates on a delivery model in which drivers purchase customer orders from retail stores (merchants) and then deliver them. To maintain proper oversight, there is a need for a system that can reliably track these purchases. The simplest approach would be to monitor transactions directly through the banking application; however, this presents two major challenges. First, allowing another person to monitor transactions would require sharing access to confidential banking information, creating security and privacy concerns. Second, transactions often take time to appear in the banking app, making it unsuitable for real-time operational tracking. As an alternative solution, fraud alert emails have been enabled with a transaction threshold of $1, ensuring that an email notification is received for every purchase made, which can be used as a near real-time source for tracking transactions.
+
+The objective of the system is to provide a secure and near real-time method for tracking purchases made by drivers while fulfilling retail delivery orders, without requiring access to confidential banking information or relying on delayed transaction updates from banking applications. The system will achieve this by using automated transaction notification emails generated for every card purchase as the primary data source for purchase events. These emails will be captured and processed to record transaction details, enabling operational visibility into driver spending, improving accountability, and creating an accurate internal record that supports monitoring, verification, and financial reconciliation.
 
 ---
 
@@ -20,13 +24,13 @@ Eliminate manual expense tracking by automatically parsing receipt emails and co
 
 ### 1.2 Target Users
 - **Primary:** Small to medium restaurant/retail business owners
-- **Secondary:** Managers tracking employee expenses
+- **Secondary:** Managers tracking Driver expenses
 - **Users per deployment:** 1-10 employees per organization
 
 ### 1.3 Core Value Proposition
-- **Zero manual data entry** - emails are automatically parsed
-- **Real-time visibility** - see expenses as they happen during shifts
-- **Shift-based tracking** - correlate purchases with work hours
+- **Zero manual data entry** - emails are automatically parsed or with a button
+- **Real-time visibility** - see expenses as they happen
+- **Shift-based tracking** - correlate purchases with work driver hours
 - **Historical analysis** - export and analyze spending patterns
 
 ---
@@ -40,7 +44,7 @@ Eliminate manual expense tracking by automatically parsing receipt emails and co
 - Email/password authentication via Supabase Auth
 - Google OAuth integration for Gmail access
 - Single-user per account model
-- Session management with automatic token refresh
+- Session management with automatic token refresh. 
 
 **User Stories:**
 - As a user, I can sign up with email/password
@@ -82,10 +86,101 @@ Eliminate manual expense tracking by automatically parsing receipt emails and co
 **Requirements:**
 - Pattern-based parsing rules
 - Support for multiple merchants
-- Extract: merchant name, amount, date/time, order number, card last 4 digits
+- Extract: merchant name, amount, date/time, order number, cards
 - Configurable regex patterns
 - Priority-based rule execution
 - Active/inactive rule management
+
+I want the System to parse two types of emails one for expences and one for Customer Payment.
+
+Driver Purchase email:
+__________
+
+From: Scotia InfoAlerts <infoalerts@scotiabank.com>
+Subject: Authorization on your credit account
+Received: Feb 23, 2026, 5:08:28 PM
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+
+<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+	<link rel="stylesheet" type="text/css" href="https://www.scotiabank.com/content/dam/scotiabank/canada/common/css/main.css">
+	<!--[if gte mso 9]>
+		<link rel="stylesheet" type="text/css" href="https://www.scotiabank.com/content/dam/scotiabank/canada/common/css/outlook.css">
+	<![endif]-->
+	<title>Authorization on your credit account</title>
+</head>
+<body>
+	<!--[if mso]>
+	<table cellpadding="0" cellspacing="0" border="0" style="padding:0px;margin:0px;width:100%;">
+	    <tr><td colspan="3" style="padding:0px;margin:0px;font-size:20px;height:20px;" height="20">&nbsp;</td></tr>
+	    <tr>
+	        <td style="padding:0px;margin:0px;">&nbsp;</td>
+	        <td style="padding:0px;margin:0px;" width="600">
+	<![endif]-->
+	<table cellpadding="20" cellspacing="0" border="0" id="backgroundTable" style="margin: 0;padding: 0;background-color: #ffffff;width: 100% !important;line-height: 100% !important;height: 100% !important;">
+		<tr>
+			<td align="middle" valign="top" style="border-collapse: collapse;" width="600">
+					<table id="mainTable" cellpadding="0" cellspacing="0" border="0" align="center" style="max-width: 600px; border: 1px solid #d81e05; background-color: #f4f4f4;">
+					
+						<tr style="background-color: #d81e05; color: #ffffff; height: 70px;">
+						    <td align="left" valign="middle" height="70">
+						        <img src="https://www.scotiabank.com/content/dam/scotiabank/canada/common/logos/new-scotiabank-logo-white-2x.png" width="238" height="72" alt="Scotiabank" />
+						    </td>
+						</tr>
+						
+						<tr>
+							<td align="center" style="padding-top: 20px;">
+								<table cellpadding="20" cellspacing="0" border="0" width="80%" style="margin: 20px 0 0 0; background-color: white;" id="contentTable">
+									<tr>
+										<td style="font-size: 13px; line-height: 1.5;font-family: 'Helvetica Neue', Arial, Helvetica, Geneva, sans-serif; color: #333333; background-color: #ffffff; text-align: left;">
+											<h1 style="font-weight: normal;font-size: 18px; line-height: 120%;font-family: 'Helvetica Neue', Arial, Helvetica, Geneva, sans-serif; color: #D81E05 !important; text-align: left; margin-bottom: 30px;">Hi <span id="firstName">KARAN,</span></h1>
+											
+											<p>There was an authorization for $42.69 at COLONIAL COLD BEER& WINE on account 4537*****798**** at  6:33 pm ET.</p><p>If you didn&#39;t do this, please call 1-800-472-6842.</p><p>See your transactions, pay bills, transfer funds, send money, and more via Scotia OnLine or Mobile Banking.</p>
+										</td>
+									</tr>
+								</table>
+							</td>
+						</tr>
+						
+			<tr>
+				<td align="center">
+					<table cellpadding="0" width="80%" style="margin-bottom: 30px;" id="disclaimer">
+						<tr>
+							<td style="font-size: 11px; line-height: 1.5;font-family: 'Helvetica Neue', Arial, Helvetica, Geneva, sans-serif; color: #333333; text-align: left;">
+								<p>You are receiving this email from The Bank of Nova Scotia  (Carrying on business as &#34;Scotiabank&#34;)</p>
+								<p>Scotiabank, 44 King Street West, Toronto, ON  M5H 1H1 <a href="http://www.scotiabank.com/contactus">www.scotiabank.com/contactus</a></p>
+								<p>To change your notification preferences or unsubscribe from InfoAlerts, sign in to Scotia OnLine. Then, go to Manage My Accounts > Alerts > Maintain Alerts.</p>
+								<p>Please do not reply to this e-mail, as it is auto-generated and you will not receive a response.</p>
+								<p>Scotiabank will never send you unsolicited emails asking for confidential information, such as your password, PIN, Access Code, credit card, or account numbers. We will never ask you to validate or restore your account access through email or pop-up windows.</p>
+							</td>
+						</tr>
+					</table>
+				</td>
+			</tr>
+		</table>
+		
+		</td>
+	</tr>
+	</table>
+	<!--[if mso]>
+	        </td>
+	        <td style="padding:0px;margin:0px;">&nbsp;</td>
+	    </tr>
+	    <tr><td colspan="3" style="padding:0px;margin:0px;font-size:20px;height:20px;" height="20">&nbsp;</td></tr>
+	</table>
+	<![endif]-->
+</body>
+</html>
+__________
+Extracted Values:
+Amount: $42.69
+Card: 4537*****798****
+Merchant: COLONIAL COLD BEER& WINE
+Time: Feb 23, 2026, 5:08:28 PM
+
+
 
 **Technical Specs:**
 - Rules stored in `parsing_rules` table
@@ -98,8 +193,7 @@ Eliminate manual expense tracking by automatically parsing receipt emails and co
 1. **Merchant Name** - Extracted from email subject/body
 2. **Purchase Amount** - Dollar amount with decimal
 3. **Purchase Date/Time** - UTC timestamp
-4. **Card Last 4 Digits** - For card identification
-5. **Order Number** - Transaction/receipt number
+4. **Card Digits** - For card identification
 
 **User Stories:**
 - As a user, I can create parsing rules for different merchants
@@ -113,27 +207,25 @@ Eliminate manual expense tracking by automatically parsing receipt emails and co
 **Priority:** P0 (Critical)
 
 **Requirements:**
-- Register credit cards by last 4 digits
-- Assign cards to employees
-- Support multiple cards per employee
+- Register credit cards by 4357*313* for 4537*****313****
 - Card activation/deactivation
-- Visual card identification
+- Name
+- line of credit : 
 
 **Database Schema:**
 ```sql
 cards:
   - id (uuid)
-  - user_id (uuid, fk)
-  - last_four_digits (text)
+  - card_digits (text)
   - card_name (text)
-  - assigned_employee_id (uuid, nullable, fk)
+  - credit_line (text)
   - is_active (boolean)
 ```
 
 **User Stories:**
 - As a user, I can add cards to the system
-- As a user, I can assign cards to specific employees
 - As a user, I can name cards for easy identification
+- As a usre, I can add a credit line attribute so I can moniter and analize
 - As a user, I can activate/deactivate cards
 
 ---

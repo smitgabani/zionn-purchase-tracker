@@ -11,21 +11,20 @@ export async function GET(request: NextRequest) {
     const { data: { user }, error } = await supabase.auth.getUser()
 
     if (error || !user) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
+      return NextResponse.redirect(
+        new URL('/login?error=unauthorized', request.url)
       )
     }
 
     // Generate OAuth URL with user ID as state
     const authUrl = getAuthorizationUrl(user.id)
 
-    return NextResponse.json({ authUrl })
+    // Redirect to Google OAuth
+    return NextResponse.redirect(authUrl)
   } catch (error: any) {
     console.error('Error generating auth URL:', error)
-    return NextResponse.json(
-      { error: error.message || 'Failed to generate authorization URL' },
-      { status: 500 }
+    return NextResponse.redirect(
+      new URL('/gmail-settings?error=auth_failed', request.url)
     )
   }
 }

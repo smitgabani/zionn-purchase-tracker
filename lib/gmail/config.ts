@@ -8,9 +8,17 @@ export const GMAIL_SCOPES = [
 export function getGmailOAuth2Client() {
   const clientId = process.env.GOOGLE_CLIENT_ID
   const clientSecret = process.env.GOOGLE_CLIENT_SECRET
-  const redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI
+  
+  // Use environment variable if set, otherwise construct from APP_URL
+  let redirectUri = process.env.NEXT_PUBLIC_GOOGLE_REDIRECT_URI
+  
+  // If not set, construct it from the app URL
+  if (!redirectUri) {
+    const appUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
+    redirectUri = `${appUrl}/api/auth/google/callback`
+  }
 
-  if (!clientId || !clientSecret || !redirectUri) {
+  if (!clientId || !clientSecret) {
     throw new Error('Missing Google OAuth credentials. Please check your environment variables.')
   }
 
