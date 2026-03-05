@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { PlayCircle, RefreshCw, Trash2, Database, Mail, FileText, AlertTriangle, SearchX, BarChart3, TestTube2, Shield, RotateCcw, CreditCard } from 'lucide-react'
+import { PlayCircle, RefreshCw, Trash2, Database, Mail, FileText, AlertTriangle, SearchX, BarChart3, TestTube2, Shield, RotateCcw, CreditCard, Copy, Search } from 'lucide-react'
 import { toast } from 'sonner'
 import { logger } from '@/lib/logger'
 
@@ -22,6 +22,79 @@ type ToolAction = {
 
 export default function ToolsPage() {
   const [loading, setLoading] = useState<string | null>(null)
+  const [duplicates, setDuplicates] = useState<any>(null)
+  const [showDuplicates, setShowDuplicates] = useState(false)
+
+  const handleFindDuplicates = async () => {
+    try {
+      setLoading('find-duplicates')
+      const response = await fetch('/api/debug/find-duplicates')
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to find duplicates')
+      }
+
+      setDuplicates(data)
+      setShowDuplicates(true)
+      
+      if (data.totalDuplicatePurchases === 0) {
+        toast.success('No duplicate purchases found!')
+      } else {
+        toast.info(`Found ${data.totalDuplicatePurchases} duplicate purchase(s)`)
+      }
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to find duplicates')
+      logger.error('Find duplicates error:', error)
+    } finally {
+      setLoading(null)
+    }
+  }
+
+  const handleDeleteDuplicates = async () => {
+    if (!duplicates || duplicates.totalDuplicatePurchases === 0) {
+      toast.error('No duplicates to delete')
+      return
+    }
+
+    const confirmed = confirm(
+      `Delete ${duplicates.totalDuplicatePurchases} duplicate purchase(s)?\n\n` +
+      `This will keep the oldest purchase from each email and delete the rest.\n\n` +
+      `This action cannot be undone!`
+    )
+
+    if (!confirmed) return
+
+    try {
+      setLoading('delete-duplicates')
+      
+      // Collect all duplicate purchase IDs
+      const allDuplicateIds = duplicates.duplicates.flatMap((group: any) => 
+        group.duplicatePurchaseIds
+      )
+
+      const response = await fetch('/api/debug/delete-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ purchaseIds: allDuplicateIds })
+      })
+
+      const data = await response.json()
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to delete duplicates')
+      }
+
+      toast.success(`Deleted ${data.deletedCount} duplicate purchase(s)!`)
+      setDuplicates(null)
+      setShowDuplicates(false)
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete duplicates')
+      logger.error('Delete duplicates error:', error)
+    } finally {
+      setLoading(null)
+    }
+  }
 
   const handleAction = async (
     action: string,
@@ -399,6 +472,136 @@ export default function ToolsPage() {
               <li>• <strong>Force Full Re-parse</strong> creates duplicates - only use for testing!</li>
             </ul>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Duplicate Purchases Tool */}
+      <Card className="mt-6">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Copy className="h-5 w-5" />
+            Duplicate Purchases
+          </CardTitle>
+          <CardDescription>
+            Find and delete purchases that were created from the same email (duplicates)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-3">
+            <Button
+              onClick={handleFindDuplicates}
+              disabled={loading === 'find-duplicates'}
+              variant="outline"
+              className="gap-2"
+            >
+              <Search className="h-4 w-4" />
+              {loading === 'find-duplicates' ? 'Searching...' : 'Find Duplicates'}
+            </Button>
+            
+            {duplicates && duplicates.totalDuplicatePurchases > 0 && (
+              <Button
+                onClick={handleDeleteDuplicates}
+                disabled={loading === 'delete-duplicates'}
+                variant="destructive"
+                className="gap-2"
+              >
+                <Trash2 className="h-4 w-4" />
+                {loading === 'delete-duplicates' 
+                  ? 'Deleting...' 
+                  : `Delete ${duplicates.totalDuplicatePurchases} Duplicate(s)`}
+              </Button>
+            )}
+          </div>
+
+          {showDuplicates && duplicates && (
+            <div className="mt-4">
+              {duplicates.totalDuplicatePurchases === 0 ? (
+                <div className="p-4 bg-green-50 border border-green-200 rounded-md">
+                  <p className="text-green-800 font-medium">✓ No duplicates found!</p>
+                  <p className="text-sm text-green-700 mt-1">
+                    All purchases are unique (no two purchases from the same email).
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
+                    <p className="text-yellow-900 font-medium">
+                      Found {duplicates.duplicateEmailGroups} email(s) with duplicate purchases
+                    </p>
+                    <p className="text-sm text-yellow-800 mt-1">
+                      Total duplicates to delete: {duplicates.totalDuplicatePurchases} purchase(s)
+                    </p>
+                    <p className="text-xs text-yellow-700 mt-2">
+                      The oldest purchase from each email will be kept. Newer duplicates will be deleted.
+                    </p>
+                  </div>
+
+                  <div className="max-h-96 overflow-y-auto space-y-2">
+                    {duplicates.duplicates.map((group: any, index: number) => (
+                      <Card key={group.raw_email_id} className="border-yellow-200">
+                        <CardContent className="pt-4">
+                          <div className="text-sm">
+                            <div className="flex items-center justify-between mb-2">
+                              <div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold">
+                                    Duplicate Group #{index + 1}
+                                  </span>
+                                  <Badge variant={group.type === 'email' ? 'default' : 'outline'} className="text-xs">
+                                    {group.type === 'email' ? 'Email-Based' : 'Data-Based'}
+                                  </Badge>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1 font-mono">
+                                  {group.type === 'email' 
+                                    ? `Email ID: ${group.raw_email_id}`
+                                    : `${group.raw_email_id === 'N/A (manual entry)' ? 'Manual entries or imports' : `Email ID: ${group.raw_email_id}`}`
+                                  }
+                                </div>
+                              </div>
+                              <Badge variant="destructive">
+                                {group.count} purchases (keep 1, delete {group.count - 1})
+                              </Badge>
+                            </div>
+                            
+                            <div className="space-y-2 mt-2">
+                              {group.purchases.map((purchase: any, pIndex: number) => (
+                                <div
+                                  key={purchase.id}
+                                  className={`p-2 rounded text-xs ${
+                                    pIndex === 0
+                                      ? 'bg-green-50 border border-green-300'
+                                      : 'bg-red-50 border border-red-300'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <span className="font-medium">{purchase.merchant}</span>
+                                      <span className="mx-2">-</span>
+                                      <span className="font-semibold">${purchase.amount}</span>
+                                    </div>
+                                    {pIndex === 0 ? (
+                                      <Badge className="bg-green-600 text-xs">KEEP</Badge>
+                                    ) : (
+                                      <Badge variant="destructive" className="text-xs">DELETE</Badge>
+                                    )}
+                                  </div>
+                                  <div className="text-gray-600 mt-1 space-y-0.5">
+                                    <div>Created: {new Date(purchase.created_at).toLocaleString()}</div>
+                                    <div>Purchase Date: {new Date(purchase.purchase_date).toLocaleString()}</div>
+                                    <div className="font-mono text-xs">Purchase ID: {purchase.id.substring(0, 8)}...</div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

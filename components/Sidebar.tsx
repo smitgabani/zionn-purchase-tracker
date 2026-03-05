@@ -26,7 +26,7 @@ const navigation = [
   { name: 'Employees', href: '/employees', icon: Users },
   { name: 'Cards', href: '/cards', icon: CreditCard },
   { name: 'Shifts', href: '/shifts', icon: Clock },
-  { name: 'Reports', href: '/reports/charts', icon: BarChart3 },
+  { name: 'Reports', href: '/reports', icon: BarChart3 },
   { name: 'Gmail Settings', href: '/gmail-settings', icon: Settings },
 ]
 

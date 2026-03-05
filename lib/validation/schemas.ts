@@ -32,10 +32,10 @@ export const createCardSchema = z.object({
 
 export const updateCardSchema = createCardSchema.partial()
 
-// Category schemas
-export const createCategorySchema = z.object({
-  name: z.string().min(1, 'Name required').max(100),
-  color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Must be valid hex color').optional(),
-})
-
-export const updateCategorySchema = createCategorySchema.partial()
+// Category schemas removed - not currently used
+// If you need to add category management, uncomment and implement:
+// export const createCategorySchema = z.object({
+//   name: z.string().min(1, 'Name required').max(100),
+//   color: z.string().regex(/^#[0-9A-Fa-f]{6}$/, 'Must be valid hex color').optional(),
+// })
+// export const updateCategorySchema = createCategorySchema.partial()

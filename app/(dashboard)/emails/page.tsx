@@ -21,7 +21,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog'
 import { Badge } from '@/components/ui/badge'
-import { Mail, Eye, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
+import { Mail, Eye, CheckCircle, XCircle, AlertCircle, Play, RefreshCw } from 'lucide-react'
 import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
 import { format } from 'date-fns'
@@ -36,8 +36,10 @@ export default function EmailsPage() {
   const [emails, setEmails] = useState<RawEmail[]>([])
   const [loading, setLoading] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
+  const [emailIdSearch, setEmailIdSearch] = useState('')
   const [selectedEmail, setSelectedEmail] = useState<RawEmail | null>(null)
   const [isDetailOpen, setIsDetailOpen] = useState(false)
+  const [parsing, setParsing] = useState(false)
 
   useEffect(() => {
     if (user) {
@@ -69,7 +71,67 @@ export default function EmailsPage() {
     setIsDetailOpen(true)
   }
 
+  const handleParseEmail = async (emailId: string) => {
+    try {
+      setParsing(true)
+      
+      // First, reset the email's parsed status
+      const { error: resetError } = await supabase
+        .from('raw_emails')
+        .update({ 
+          parsed: false,
+          parse_error: null,
+          parsing_rule_id: null
+        })
+        .eq('id', emailId)
+
+      if (resetError) throw resetError
+
+      // Call the parse API
+      const response = await fetch('/api/parser/parse-emails', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'quick' })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to parse email')
+      }
+
+      toast.success(`Parsing complete! ${result.purchasesCreated} purchase(s) created`)
+
+      // Refresh emails and selected email
+      await fetchEmails()
+      
+      // Update the selected email
+      const { data: updatedEmail } = await supabase
+        .from('raw_emails')
+        .select('*')
+        .eq('id', emailId)
+        .single()
+      
+      if (updatedEmail) {
+        setSelectedEmail(updatedEmail)
+      }
+
+    } catch (error: any) {
+      console.error('Parse error:', error)
+      toast.error(error.message || 'Failed to parse email')
+    } finally {
+      setParsing(false)
+    }
+  }
+
   const filteredEmails = emails.filter(email => {
+    // Filter by email ID if provided
+    if (emailIdSearch) {
+      const idSearch = emailIdSearch.trim().toLowerCase()
+      return email.id.toLowerCase().includes(idSearch)
+    }
+    
+    // Filter by search term
     if (!searchTerm) return true
     const search = searchTerm.toLowerCase()
     return (
@@ -89,13 +151,23 @@ export default function EmailsPage() {
       </div>
 
       {/* Search and Stats */}
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div className="flex-1 max-w-md">
-          <Input
-            placeholder="Search emails..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      <div className="mb-6 space-y-3">
+        <div className="flex items-center gap-4">
+          <div className="flex-1 max-w-md">
+            <Input
+              placeholder="Search by sender, subject, or body..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+            />
+          </div>
+          <div className="flex-1 max-w-md">
+            <Input
+              placeholder="Search by Email ID (raw_email_id)..."
+              value={emailIdSearch}
+              onChange={(e) => setEmailIdSearch(e.target.value)}
+              className="font-mono text-sm"
+            />
+          </div>
         </div>
         <div className="flex gap-4 text-sm">
           <div className="flex items-center gap-2">
@@ -220,7 +292,29 @@ export default function EmailsPage() {
       <Dialog open={isDetailOpen} onOpenChange={setIsDetailOpen}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Email Details</DialogTitle>
+            <DialogTitle className="flex items-center justify-between">
+              <span>Email Details</span>
+              {selectedEmail && (
+                <Button
+                  onClick={() => handleParseEmail(selectedEmail.id)}
+                  disabled={parsing}
+                  size="sm"
+                  className="gap-2"
+                >
+                  {parsing ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      Parsing...
+                    </>
+                  ) : (
+                    <>
+                      <Play className="h-4 w-4" />
+                      {selectedEmail.parsed ? 'Re-parse Email' : 'Parse Email'}
+                    </>
+                  )}
+                </Button>
+              )}
+            </DialogTitle>
             <DialogDescription>
               View the full email content and parsing status
             </DialogDescription>
@@ -230,6 +324,10 @@ export default function EmailsPage() {
               {/* Email Metadata */}
               <div className="space-y-2">
                 <div className="grid gap-2">
+                  <div className="flex gap-2">
+                    <span className="font-semibold min-w-[100px]">Email ID:</span>
+                    <span className="text-gray-700 font-mono text-xs">{selectedEmail.id}</span>
+                  </div>
                   <div className="flex gap-2">
                     <span className="font-semibold min-w-[100px]">From:</span>
                     <span className="text-gray-700">{selectedEmail.sender}</span>
@@ -281,9 +379,14 @@ export default function EmailsPage() {
                 </div>
               </div>
 
-              {/* Gmail Message ID */}
-              <div className="text-xs text-gray-500">
-                <span className="font-semibold">Gmail Message ID:</span> {selectedEmail.gmail_message_id}
+              {/* IDs */}
+              <div className="text-xs text-gray-500 space-y-1">
+                <div>
+                  <span className="font-semibold">Gmail Message ID:</span> {selectedEmail.gmail_message_id}
+                </div>
+                <div className="font-mono">
+                  <span className="font-semibold">Raw Email ID:</span> {selectedEmail.id}
+                </div>
               </div>
             </div>
           )}
