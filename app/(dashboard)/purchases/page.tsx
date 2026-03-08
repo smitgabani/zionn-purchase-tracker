@@ -56,6 +56,7 @@ import { toast } from 'sonner'
 import { Database } from '@/lib/types/database.types'
 import { format } from 'date-fns'
 import { PurchaseFilters, type PurchaseFilterValues } from '@/components/purchases/PurchaseFilters'
+import { PurchaseDetailModal } from '@/components/purchases/PurchaseDetailModal'
 import { convertToCSV, downloadCSV, formatDateForExport, formatCurrencyForExport } from '@/lib/utils/export'
 import { parseUTCDate } from '@/lib/utils/date'
 import {
@@ -84,6 +85,10 @@ export default function PurchasesPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [currentPurchase, setCurrentPurchase] = useState<Purchase | null>(null)
+
+  // Detail modal state
+  const [detailPurchase, setDetailPurchase] = useState<Purchase | null>(null)
+  const [isDetailOpen, setIsDetailOpen] = useState(false)
 
   // Selection mode state
   const [selectionMode, setSelectionMode] = useState(false)
@@ -115,7 +120,7 @@ export default function PurchasesPage() {
     reviewedStatus: null,
     searchQuery: '',
     verifiedMerchants: [],
-  // Apply client-side filtering (safety net in addition to server-side filtering)
+    // Apply client-side filtering (safety net in addition to server-side filtering)
   })
   const [filtersReady, setFiltersReady] = useState(false)
   const filteredPurchases = useMemo(() => {
@@ -124,7 +129,7 @@ export default function PurchasesPage() {
     // Search query filter
     if (filters.searchQuery) {
       const query = filters.searchQuery.toLowerCase()
-      result = result.filter(p => 
+      result = result.filter(p =>
         p.merchant?.toLowerCase().includes(query) ||
         p.description?.toLowerCase().includes(query)
       )
@@ -624,6 +629,29 @@ export default function PurchasesPage() {
     }
   }
 
+  const handleAssignEmployee = async (purchaseId: string, employeeId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('purchases')
+        .update({ employee_id: employeeId })
+        .eq('id', purchaseId)
+        .select()
+        .single()
+
+      if (error) throw error
+
+      dispatch(updatePurchase(data))
+      // Update the detail modal's purchase so it reflects immediately
+      setDetailPurchase(data)
+
+      const employeeName = employees.find(e => e.id === employeeId)?.name || 'Unknown'
+      toast.success(`Assigned to ${employeeName}`)
+    } catch (error: any) {
+      console.error('Error assigning employee:', error)
+      toast.error('Failed to assign employee')
+    }
+  }
+
   // Selection mode functions
   const toggleSelectionMode = () => {
     setSelectionMode(!selectionMode)
@@ -662,7 +690,7 @@ export default function PurchasesPage() {
       toast.error('No purchases selected')
       return
     }
-    
+
     const selected = filteredPurchases.filter(p => selectedPurchases.has(p.id))
     const exportData = selected.map(purchase => ({
       'Date': formatDateForExport(purchase.purchase_date),
@@ -675,7 +703,7 @@ export default function PurchasesPage() {
       'Reviewed By': purchase.reviewed_by_initials || '',
       'Description': purchase.description || ''
     }))
-    
+
     const csv = convertToCSV(exportData, Object.keys(exportData[0]))
     downloadCSV(csv, `selected-purchases-${new Date().toISOString().split('T')[0]}.csv`)
     toast.success(`Exported ${selected.length} selected purchases`)
@@ -686,7 +714,7 @@ export default function PurchasesPage() {
       toast.error('No purchases to export')
       return
     }
-    
+
     const exportData = filteredPurchases.map(purchase => ({
       'Date': formatDateForExport(purchase.purchase_date),
       'Merchant': purchase.merchant || '',
@@ -698,7 +726,7 @@ export default function PurchasesPage() {
       'Reviewed By': purchase.reviewed_by_initials || '',
       'Description': purchase.description || ''
     }))
-    
+
     const csv = convertToCSV(exportData, Object.keys(exportData[0]))
     downloadCSV(csv, `filtered-purchases-${new Date().toISOString().split('T')[0]}.csv`)
     toast.success(`Exported ${filteredPurchases.length} purchases`)
@@ -728,7 +756,7 @@ export default function PurchasesPage() {
       toast.error('No purchases to export')
       return
     }
-    
+
     const exportData = purchases.map(purchase => ({
       'Date': formatDateForExport(purchase.purchase_date),
       'Merchant': purchase.merchant || '',
@@ -740,7 +768,7 @@ export default function PurchasesPage() {
       'Reviewed By': purchase.reviewed_by_initials || '',
       'Description': purchase.description || ''
     }))
-    
+
     const csv = convertToCSV(exportData, Object.keys(exportData[0]))
     downloadCSV(csv, `all-purchases-${new Date().toISOString().split('T')[0]}.csv`)
     toast.success(`Exported ${purchases.length} purchases`)
@@ -760,6 +788,16 @@ export default function PurchasesPage() {
   const getCategoryColor = (categoryId: string | null) => {
     if (!categoryId) return '#6366f1'
     return categories.find(c => c.id === categoryId)?.color || '#6366f1'
+  }
+
+  const getCategoryName = (categoryId: string | null) => {
+    if (!categoryId) return 'N/A'
+    return categories.find(c => c.id === categoryId)?.name || 'Unknown'
+  }
+
+  const handleRowClick = (purchase: Purchase) => {
+    setDetailPurchase(purchase)
+    setIsDetailOpen(true)
   }
 
   return (
@@ -990,7 +1028,7 @@ export default function PurchasesPage() {
                 Clear Selection
               </Button>
             </div>
-            
+
             {/* Bulk Action Buttons */}
             <div className="flex flex-col sm:flex-row gap-2">
               <Dialog open={bulkAssignDialogOpen} onOpenChange={setBulkAssignDialogOpen}>
@@ -1065,9 +1103,9 @@ export default function PurchasesPage() {
               <TableHead>Merchant</TableHead>
               <TableHead>Amount</TableHead>
               <TableHead>Card</TableHead>
+              <TableHead>Employee</TableHead>
               <TableHead>Order #</TableHead>
               <TableHead>Initials</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -1079,9 +1117,9 @@ export default function PurchasesPage() {
               </TableRow>
             ) : (
               filteredPurchases.map((purchase) => (
-                <TableRow key={purchase.id}>
+                <TableRow key={purchase.id} onClick={() => handleRowClick(purchase)} className="cursor-pointer hover:bg-gray-50">
                   {selectionMode && (
-                    <TableCell>
+                    <TableCell onClick={(e) => e.stopPropagation()}>
                       <input
                         type="checkbox"
                         checked={selectedPurchases.has(purchase.id)}
@@ -1107,7 +1145,8 @@ export default function PurchasesPage() {
                     ${purchase.amount.toFixed(2)}
                   </TableCell>
                   <TableCell>{getCardDisplay(purchase.card_id)}</TableCell>
-                  <TableCell>
+                  <TableCell className="text-sm">{getEmployeeName(purchase.employee_id)}</TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Input
                       type="text"
                       maxLength={6}
@@ -1117,7 +1156,7 @@ export default function PurchasesPage() {
                       className="w-24 h-8 text-center"
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell onClick={(e) => e.stopPropagation()}>
                     <Input
                       type="text"
                       maxLength={10}
@@ -1126,24 +1165,6 @@ export default function PurchasesPage() {
                       onChange={(e) => handleInitialsChange(purchase.id, e.target.value)}
                       className="w-20 h-8 text-center uppercase"
                     />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenDialog(purchase)}
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleDelete(purchase.id)}
-                      >
-                        <Trash2 className="h-4 w-4 text-red-600" />
-                      </Button>
-                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -1177,11 +1198,13 @@ export default function PurchasesPage() {
       </div>
 
       {/* Loading indicator */}
-      {isLoadingMore && effectiveHasMore && (
-        <div className="flex justify-center py-4">
-          <div className="text-sm text-gray-600">Loading more purchases...</div>
-        </div>
-      )}
+      {
+        isLoadingMore && effectiveHasMore && (
+          <div className="flex justify-center py-4">
+            <div className="text-sm text-gray-600">Loading more purchases...</div>
+          </div>
+        )
+      }
 
       {/* Total Purchases Counter */}
       <div className="mt-4 p-4 border-t bg-gray-50 rounded-b-lg">
@@ -1197,6 +1220,31 @@ export default function PurchasesPage() {
           )}
         </div>
       </div>
-    </div>
+
+      {/* Purchase Detail Modal */}
+      <PurchaseDetailModal
+        purchase={detailPurchase}
+        isOpen={isDetailOpen}
+        onClose={() => {
+          setIsDetailOpen(false)
+          setDetailPurchase(null)
+        }}
+        getEmployeeName={getEmployeeName}
+        getCardDisplay={getCardDisplay}
+        getCategoryName={getCategoryName}
+        employees={employees}
+        onAssignEmployee={handleAssignEmployee}
+        onEdit={(purchase) => {
+          setIsDetailOpen(false)
+          setDetailPurchase(null)
+          handleOpenDialog(purchase)
+        }}
+        onDelete={(purchaseId) => {
+          setIsDetailOpen(false)
+          setDetailPurchase(null)
+          handleDelete(purchaseId)
+        }}
+      />
+    </div >
   )
 }

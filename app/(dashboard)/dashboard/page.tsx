@@ -10,8 +10,7 @@ import { OngoingShiftCard } from '@/components/dashboard/OngoingShiftCard'
 import { PurchaseEditModal } from '@/components/dashboard/PurchaseEditModal'
 import { AlertPanel } from '@/components/dashboard/AlertPanel'
 import { toast } from 'sonner'
-import { isPurchaseInShift, getShiftDayRange, isInCurrentShiftDay } from '@/lib/utils/date'
-import { startOfDay } from 'date-fns'
+import { isPurchaseInShift, getShiftDayRange, isInCurrentShiftDay, parseUTCDate } from '@/lib/utils/date'
 import type { Database } from '@/lib/types/database.types'
 
 type Purchase = Database['public']['Tables']['purchases']['Row']
@@ -78,7 +77,7 @@ export default function DashboardPage() {
   }
 
   const fetchShifts = async () => {
-    const todayStart = startOfDay(new Date()).toISOString()
+    const { shiftStart: shiftsFrom } = getShiftDayRange()
 
     const { data, error } = await supabase
       .from('card_shifts')
@@ -87,6 +86,7 @@ export default function DashboardPage() {
         cards!inner(last_four, nickname, bank_name),
         employees(name)
       `)
+      .gte('start_time', shiftsFrom.toISOString())
       .order('start_time', { ascending: false })
 
     if (error) {
@@ -98,12 +98,13 @@ export default function DashboardPage() {
   }
 
   const fetchPurchases = async () => {
-    const todayStart = startOfDay(new Date()).toISOString()
+    const { shiftStart } = getShiftDayRange()
+    const shiftDayStart = shiftStart.toISOString()
 
     const { data, error } = await supabase
       .from('purchases')
       .select('*')
-      .gte('purchase_date', todayStart)
+      .gte('purchase_date', shiftDayStart)
       .order('purchase_date', { ascending: false })
 
     if (error) {
@@ -148,7 +149,7 @@ export default function DashboardPage() {
   }, [shifts])
 
   const endedShiftsToday = useMemo(() => {
-    return shifts.filter((s) => s.end_time)
+    return shifts.filter((s) => s.end_time && isInCurrentShiftDay(s.start_time))
   }, [shifts])
 
   const shiftPurchases = useMemo(() => {
@@ -158,9 +159,9 @@ export default function DashboardPage() {
       const matches = purchases.filter((p) => {
         if (p.card_id !== shift.card_id) return false
 
-        const purchaseTime = new Date(p.purchase_date)
-        const shiftStart = new Date(shift.start_time)
-        const shiftEnd = shift.end_time ? new Date(shift.end_time) : new Date()
+        const purchaseTime = parseUTCDate(p.purchase_date)
+        const shiftStart = parseUTCDate(shift.start_time)
+        const shiftEnd = shift.end_time ? parseUTCDate(shift.end_time) : new Date()
 
         return purchaseTime >= shiftStart && purchaseTime <= shiftEnd
       })
@@ -176,7 +177,7 @@ export default function DashboardPage() {
       if (!p.card_id) return false // Skip manual purchases
 
       // Check if purchase falls within ANY shift (ongoing or ended)
-      const hasMatchingShift = shifts.some((shift) => 
+      const hasMatchingShift = shifts.some((shift) =>
         isPurchaseInShift(
           { purchase_date: p.purchase_date, card_id: p.card_id as string },
           shift

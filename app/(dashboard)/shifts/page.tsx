@@ -362,7 +362,7 @@ export default function ShiftsPage() {
       })
 
       const total = shiftPurchases.reduce((sum, p) => sum + p.amount, 0)
-      
+
       statsMap.set(shift.id, {
         count: shiftPurchases.length,
         total: total
@@ -388,7 +388,7 @@ export default function ShiftsPage() {
   const handleEndShift = async (shift: CardShift, e: React.MouseEvent) => {
     // Stop propagation to prevent row click
     e.stopPropagation()
-    
+
     if (!confirm('End this shift now?')) return
 
     try {
@@ -406,16 +406,6 @@ export default function ShiftsPage() {
         .single()
 
       if (error) throw error
-
-      // Update card to unassign employee
-      const { error: cardError } = await supabase
-        .from('cards')
-        .update({ current_employee_id: null })
-        .eq('id', shift.card_id)
-
-      if (cardError) {
-        console.error('Error updating card assignment:', cardError)
-      }
 
       // Update local state
       setShifts(shifts.map(s => s.id === shift.id ? data : s))
@@ -448,7 +438,7 @@ export default function ShiftsPage() {
 
     try {
       // Determine start time
-      const startTime = formData.start_time_type === 'now' 
+      const startTime = formData.start_time_type === 'now'
         ? new Date().toISOString()
         : formData.custom_start_time
           ? new Date(formData.custom_start_time).toISOString()
@@ -483,19 +473,6 @@ export default function ShiftsPage() {
         .single()
 
       if (error) throw error
-
-      // If this is an active shift (no end time), update the card's current_employee_id
-      if (!endTime) {
-        const { error: cardError } = await supabase
-          .from('cards')
-          .update({ current_employee_id: formData.employee_id })
-          .eq('id', formData.card_id)
-
-        if (cardError) {
-          console.error('Error updating card assignment:', cardError)
-          // Don't fail the whole operation, just log the error
-        }
-      }
 
       // Add to local state
       setShifts([data, ...shifts])
@@ -567,19 +544,21 @@ export default function ShiftsPage() {
     const start = new Date(startTime)
     const end = endTime ? new Date(endTime) : new Date()
     const diffMs = end.getTime() - start.getTime()
-    
+
     const hours = Math.floor(diffMs / (1000 * 60 * 60))
     const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60))
-    
+
     if (hours > 0) {
       return `${hours}h ${minutes}m`
     }
     return `${minutes}m`
   }
 
-  const renderShiftRow = (shift: CardShift) => {
+  const renderShiftRow = (shift: CardShift, options?: { showStatus?: boolean; showExport?: boolean }) => {
+    const showStatus = options?.showStatus ?? true
+    const showExport = options?.showExport ?? false
     const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
-    
+
     return (
       <TableRow
         key={shift.id}
@@ -648,13 +627,15 @@ export default function ShiftsPage() {
             {calculateDuration(shift.start_time, shift.end_time)}
           </span>
         </TableCell>
-        <TableCell>
-          {shift.end_time ? (
-            <Badge variant="secondary">Ended</Badge>
-          ) : (
-            <Badge variant="default">Active</Badge>
-          )}
-        </TableCell>
+        {showStatus && (
+          <TableCell>
+            {shift.end_time ? (
+              <Badge variant="secondary">Ended</Badge>
+            ) : (
+              <Badge variant="default">Active</Badge>
+            )}
+          </TableCell>
+        )}
         <TableCell className="text-right">
           <div className="flex items-center justify-end gap-1">
             <ShoppingCart className="h-4 w-4 text-gray-400" />
@@ -680,17 +661,102 @@ export default function ShiftsPage() {
             <Trash2 className="h-4 w-4 text-red-600" />
           </Button>
         </TableCell>
+        {showExport && (
+          <TableCell className="text-center">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={(e) => handleExportSingleShift(shift, e)}
+              title="Export shift with purchases"
+            >
+              <Download className="h-4 w-4 text-gray-600" />
+            </Button>
+          </TableCell>
+        )}
       </TableRow>
     )
   }
 
+
+  const handleExportSingleShift = async (shift: CardShift, e: React.MouseEvent) => {
+    e.stopPropagation()
+
+    try {
+      // Fetch full purchase details for this shift's card in the shift's time range
+      const startTime = parseUTCDate(shift.start_time).toISOString()
+      const endTime = shift.end_time ? parseUTCDate(shift.end_time).toISOString() : new Date().toISOString()
+
+      const { data: shiftPurchases, error } = await supabase
+        .from('purchases')
+        .select('*')
+        .eq('card_id', shift.card_id)
+        .is('deleted_at', null)
+        .gte('purchase_date', startTime)
+        .lte('purchase_date', endTime)
+        .order('purchase_date', { ascending: true })
+
+      if (error) throw error
+
+      const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
+
+      // Helper to escape CSV values
+      const csvEscape = (val: string | number) => {
+        const str = String(val)
+        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+          return `"${str.replace(/"/g, '""')}"`
+        }
+        return str
+      }
+
+      // Build structured CSV: shift header block + purchase table
+      const lines: string[] = []
+
+      // Shift header section (key-value pairs)
+      lines.push('SHIFT')
+      lines.push(`Start Time,${csvEscape(formatDateForExport(shift.start_time))}`)
+      lines.push(`End Time,${csvEscape(shift.end_time ? formatDateForExport(shift.end_time) : 'Ongoing')}`)
+      lines.push(`Duration,${csvEscape(calculateDurationForExport(shift.start_time, shift.end_time))}`)
+      lines.push(`Employee,${csvEscape(shift.employees.name)}`)
+      lines.push(`Card,${csvEscape(getCardDisplay(shift))}`)
+      lines.push(`Total Purchases,${stats.count}`)
+      lines.push(`Total Spending,${csvEscape(formatCurrencyForExport(stats.total))}`)
+
+      // Blank separator line
+      lines.push('')
+
+      // Purchase table header
+      lines.push('Time,Merchant,Amount,Currency,Order#')
+
+      // Purchase rows
+      for (const p of (shiftPurchases || [])) {
+        const purchaseTime = p.purchase_date
+          ? format(parseUTCDate(p.purchase_date), 'MM/dd/yyyy HH:mm')
+          : ''
+        lines.push([
+          csvEscape(purchaseTime),
+          csvEscape(p.merchant || 'Unknown'),
+          csvEscape(p.amount.toFixed(2)),
+          csvEscape(p.currency || 'CAD'),
+          csvEscape(p.order_number || ''),
+        ].join(','))
+      }
+
+      const csv = lines.join('\n')
+      const filename = `shift-${shift.shift_id || shift.id.slice(0, 8)}-${new Date().toISOString().split('T')[0]}.csv`
+      downloadCSV(csv, filename)
+      toast.success(`Exported shift with ${(shiftPurchases || []).length} purchases`)
+    } catch (error: any) {
+      console.error('Error exporting shift:', error)
+      toast.error('Failed to export shift')
+    }
+  }
 
   const handleExportOngoingShifts = () => {
     if (ongoingShifts.length === 0) {
       toast.error('No ongoing shifts to export')
       return
     }
-    
+
     const exportData = ongoingShifts.map(shift => {
       const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
       return {
@@ -704,7 +770,7 @@ export default function ShiftsPage() {
         'Total Spending': formatCurrencyForExport(stats.total)
       }
     })
-    
+
     const csv = convertToCSV(exportData, Object.keys(exportData[0]))
     downloadCSV(csv, `ongoing-shifts-${new Date().toISOString().split('T')[0]}.csv`)
     toast.success(`Exported ${ongoingShifts.length} ongoing shifts`)
@@ -715,7 +781,7 @@ export default function ShiftsPage() {
       toast.error('No ended shifts to export')
       return
     }
-    
+
     const exportData = endedShifts.map(shift => {
       const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
       return {
@@ -729,7 +795,7 @@ export default function ShiftsPage() {
         'Total Spending': formatCurrencyForExport(stats.total)
       }
     })
-    
+
     const csv = convertToCSV(exportData, Object.keys(exportData[0]))
     downloadCSV(csv, `ended-shifts-${new Date().toISOString().split('T')[0]}.csv`)
     toast.success(`Exported ${endedShifts.length} ended shifts`)
@@ -740,7 +806,7 @@ export default function ShiftsPage() {
       toast.error('No shifts to export')
       return
     }
-    
+
     const exportData = shifts.map(shift => {
       const stats = getShiftStats.get(shift.id) || { count: 0, total: 0 }
       return {
@@ -755,7 +821,7 @@ export default function ShiftsPage() {
         'Total Spending': formatCurrencyForExport(stats.total)
       }
     })
-    
+
     const csv = convertToCSV(exportData, Object.keys(exportData[0]))
     downloadCSV(csv, `all-shifts-${new Date().toISOString().split('T')[0]}.csv`)
     toast.success(`Exported ${shifts.length} shifts`)
@@ -770,25 +836,25 @@ export default function ShiftsPage() {
             Track card assignment history, shift durations, and spending. Click a shift to view purchases.
           </p>
         </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="flex-1 sm:flex-none">
-                <Download className="mr-2 h-4 w-4" />
-                Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={handleExportOngoingShifts}>
-                Export Ongoing Shifts ({ongoingShifts.length})
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportEndedShifts}>
-                Export Ended Shifts ({endedShifts.length})
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportAllShifts}>
-                Export All Shifts ({shifts.length})
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" className="flex-1 sm:flex-none">
+              <Download className="mr-2 h-4 w-4" />
+              Export
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={handleExportOngoingShifts}>
+              Export Ongoing Shifts ({ongoingShifts.length})
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportEndedShifts}>
+              Export Ended Shifts ({endedShifts.length})
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleExportAllShifts}>
+              Export All Shifts ({shifts.length})
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
           <DialogTrigger asChild>
             <Button onClick={handleOpenDialog}>
@@ -951,7 +1017,7 @@ export default function ShiftsPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {ongoingShifts.map(renderShiftRow)}
+                    {ongoingShifts.map(s => renderShiftRow(s))}
                   </TableBody>
                 </Table>
               </div>
@@ -1018,14 +1084,14 @@ export default function ShiftsPage() {
                       <TableHead>Start Time</TableHead>
                       <TableHead>End Time</TableHead>
                       <TableHead>Duration</TableHead>
-                      <TableHead>Status</TableHead>
                       <TableHead className="text-right">Purchases</TableHead>
                       <TableHead className="text-right">Total Spending</TableHead>
                       <TableHead className="text-right">Actions</TableHead>
+                      <TableHead className="text-center">Export</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {endedShifts.map(renderShiftRow)}
+                    {endedShifts.map(s => renderShiftRow(s, { showStatus: false, showExport: true }))}
                   </TableBody>
                 </Table>
               </div>

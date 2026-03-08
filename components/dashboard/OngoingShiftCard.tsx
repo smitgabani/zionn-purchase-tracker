@@ -50,6 +50,10 @@ export function OngoingShiftCard({
     ? `${shift.cards.nickname} (****${shift.cards.last_four})`
     : `****${shift.cards.last_four}`
 
+  const startTime = new Date(shift.start_time).toLocaleTimeString('en-US', {
+    hour: 'numeric',
+    minute: '2-digit',
+  })
   const timeAgo = formatDistanceToNow(new Date(shift.start_time), { addSuffix: true })
 
   return (
@@ -66,7 +70,7 @@ export function OngoingShiftCard({
           <Clock className="h-3.5 w-3.5" />
           <span>{cardDisplay}</span>
         </div>
-        <div className="text-xs text-gray-500 mt-1">Started {timeAgo}</div>
+        <div className="text-xs text-gray-500 mt-1">Started at {startTime} ({timeAgo})</div>
       </div>
 
       {/* Stats */}

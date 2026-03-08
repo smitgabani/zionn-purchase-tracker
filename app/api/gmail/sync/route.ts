@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server'
 import { GmailService } from '@/lib/gmail/service'
 import { EmailParser } from '@/lib/parser/engine'
 import { getGmailSyncState } from '@/lib/gmail/token-manager'
+import { resolveEmployeeFromShift } from '@/lib/utils/shift-lookup'
 
 export const runtime = 'nodejs'
 
@@ -142,14 +143,14 @@ export async function POST(request: NextRequest) {
           if (parseResult.data.card_last_four) {
             const { data: card } = await supabase
               .from('cards')
-              .select('id, employee_id')
+              .select('id')
               .eq('last_four', parseResult.data.card_last_four)
               .eq('is_active', true)
               .single()
 
             if (card) {
               cardId = card.id
-              employeeId = card.employee_id
+              employeeId = await resolveEmployeeFromShift(supabase, card.id, purchaseDate!)
             }
           }
 

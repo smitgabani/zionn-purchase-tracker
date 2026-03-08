@@ -55,7 +55,8 @@ export default function CardsPage() {
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isEditing, setIsEditing] = useState(false)
   const [currentCard, setCurrentCard] = useState<Card | null>(null)
-  
+  const [activeShifts, setActiveShifts] = useState<Record<string, string>>({})
+
   const [formData, setFormData] = useState({
     last_four: '',
     bank_name: '',
@@ -69,12 +70,13 @@ export default function CardsPage() {
     if (user) {
       fetchCards()
       fetchEmployees()
+      fetchActiveShifts()
     }
   }, [user])
 
   const fetchCards = async () => {
     if (!user) return
-    
+
     try {
       const { data, error } = await supabase
         .from('cards')
@@ -106,6 +108,35 @@ export default function CardsPage() {
     }
   }
 
+  // Fetch active shifts to determine current employee per card
+  const fetchActiveShifts = async () => {
+    if (!user) return
+
+    try {
+      const { data, error } = await supabase
+        .from('card_shifts')
+        .select('card_id, employee_id, cards!inner(admin_user_id)')
+        .eq('cards.admin_user_id', user.id)
+        .is('end_time', null)
+
+      if (error) throw error
+
+      // Build a map of card_id -> employee_id from active shifts
+      const shiftMap: Record<string, string> = {}
+      for (const shift of (data || [])) {
+        shiftMap[shift.card_id] = shift.employee_id
+      }
+      setActiveShifts(shiftMap)
+    } catch (error) {
+      console.error('Failed to load active shifts:', error)
+    }
+  }
+
+  // Get the current employee for a card from active shifts
+  const getCardEmployeeId = (cardId: string): string | null => {
+    return activeShifts[cardId] || null
+  }
+
   const handleOpenDialog = (card?: Card) => {
     if (card) {
       setIsEditing(true)
@@ -115,7 +146,7 @@ export default function CardsPage() {
         bank_name: card.bank_name,
         card_type: card.card_type || '',
         nickname: card.nickname || '',
-        employee_id: card.employee_id || UNASSIGNED_VALUE,
+        employee_id: getCardEmployeeId(card.id) || UNASSIGNED_VALUE,
         is_shared: card.is_shared,
       })
     } else {
@@ -222,35 +253,19 @@ export default function CardsPage() {
   const handleEmployeeChange = async (cardId: string, newEmployeeId: string) => {
     try {
       const employeeId = newEmployeeId === UNASSIGNED_VALUE ? null : newEmployeeId
-      const card = cards.find(c => c.id === cardId)
-      
-      if (!card) return
 
       // Step 1: End current active shift (if any)
-      if (card.employee_id) {
-        const { error: endShiftError } = await supabase
-          .from('card_shifts')
-          .update({ end_time: new Date().toISOString() })
-          .eq('card_id', cardId)
-          .is('end_time', null)
+      const { error: endShiftError } = await supabase
+        .from('card_shifts')
+        .update({ end_time: new Date().toISOString() })
+        .eq('card_id', cardId)
+        .is('end_time', null)
 
-        if (endShiftError) {
-          console.error('Error ending shift:', endShiftError)
-        }
+      if (endShiftError) {
+        console.error('Error ending shift:', endShiftError)
       }
 
-      // Step 2: Update card assignment
-      const { data, error } = await supabase
-        .from('cards')
-        .update({ employee_id: employeeId })
-        .eq('id', cardId)
-        .select()
-        .single()
-
-      if (error) throw error
-      dispatch(updateCard(data))
-
-      // Step 3: Create new shift (only if assigning to an employee, not unassigning)
+      // Step 2: Create new shift (only if assigning to an employee, not unassigning)
       if (employeeId) {
         const { error: shiftError } = await supabase
           .from('card_shifts')
@@ -262,16 +277,19 @@ export default function CardsPage() {
 
         if (shiftError) {
           console.error('Error creating shift:', shiftError)
-          toast.error('Card assigned but shift logging failed')
+          toast.error('Failed to assign employee')
           return
         }
       }
-      
-      const employeeName = employeeId 
+
+      const employeeName = employeeId
         ? employees.find(e => e.id === employeeId)?.name || 'Unknown'
         : 'Unassigned'
-      
+
       toast.success(`Card assigned to ${employeeName}`)
+
+      // Refresh active shifts to update the UI
+      fetchActiveShifts()
     } catch (error) {
       toast.error('Failed to update assignment')
       console.error(error)
@@ -471,7 +489,7 @@ export default function CardsPage() {
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <Select
-                          value={card.employee_id || UNASSIGNED_VALUE}
+                          value={getCardEmployeeId(card.id) || UNASSIGNED_VALUE}
                           onValueChange={(value) => handleEmployeeChange(card.id, value)}
                         >
                           <SelectTrigger className="w-full sm:w-[180px]">
